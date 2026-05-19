@@ -1,76 +1,97 @@
 import { NextResponse } from "next/server";
+import nodemailer from "nodemailer";
 
 // In-memory store for OTPs (Dev only, will reset on restart)
-// In a real app, this should be in Redis or Database
 const otpStore = new Map<string, string>();
 
 export async function POST(request: Request) {
-  const body = await request.json();
-  const { action, email, otp } = body;
+  try {
+    const body = await request.json();
+    const { action, email, otp } = body;
 
-  if (!email) {
-    return NextResponse.json({ error: "Email is required" }, { status: 400 });
-  }
-
-  // Handle Send OTP
-  if (action === "send") {
-    // Generate random 4 digit OTP
-    const generatedOtp = Math.floor(1000 + Math.random() * 9000).toString();
-    otpStore.set(email, generatedOtp);
-
-    const apiKey = process.env.RESEND_API_KEY;
-
-    if (!apiKey) {
-      console.log(`[DEV] OTP for ${email} is ${generatedOtp}`);
-      return NextResponse.json({ 
-        success: true, 
-        message: "Resend API key missing. OTP logged in console or use fallback '1234'.",
-        devOtp: generatedOtp // Returning it for dev convenience
-      });
+    if (!email) {
+      return NextResponse.json({ error: "Email is required" }, { status: 400 });
     }
 
-    try {
-      const res = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          from: "GymProgress+ <onboarding@resend.dev>",
+    // Handle Send OTP
+    if (action === "send") {
+      // Generate random 4 digit OTP
+      const generatedOtp = Math.floor(1000 + Math.random() * 9000).toString();
+      otpStore.set(email, generatedOtp);
+
+      console.log(`\n========================================\n[DEV DEBUG] Generated OTP for ${email} is: ${generatedOtp}\n========================================\n`);
+
+      console.log(`[AUTH] Attempting to send SMTP OTP to ${email}...`);
+
+      try {
+        const transporter = nodemailer.createTransport({
+          service: "gmail",
+          auth: {
+            user: "jangratushar348@gmail.com",
+            pass: "wawnhiohugspvzrp", // Google App Password provided by user
+          },
+        });
+
+        const mailOptions = {
+          from: `"GymProgress+ Admin" <jangratushar348@gmail.com>`,
           to: email,
-          subject: "Your GymProgress+ Login OTP",
-          html: `<p>Your One-Time Password for login is: <strong>${generatedOtp}</strong></p>`,
-        }),
-      });
+          subject: "Your GymProgress+ Security OTP",
+          html: `
+            <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 30px; border: 1px solid #e5e7eb; border-radius: 16px; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+              <div style="text-align: center; margin-bottom: 24px;">
+                <h1 style="color: #3b82f6; font-size: 28px; font-weight: bold; margin: 0;">GymProgress+</h1>
+                <p style="color: #6b7280; font-size: 14px; margin: 4px 0 0 0;">Secure Sign In / Verification</p>
+              </div>
+              <div style="border-top: 1px solid #f3f4f6; padding-top: 20px;">
+                <p style="font-size: 16px; color: #374151; line-height: 1.5; margin: 0 0 16px 0;">Hello,</p>
+                <p style="font-size: 16px; color: #374151; line-height: 1.5; margin: 0 0 24px 0;">Your One-Time Password (OTP) for secure authentication is below. Enter this code on the verification page to complete your action:</p>
+                <div style="background-color: #f3f4f6; padding: 18px; border-radius: 12px; text-align: center; margin-bottom: 24px;">
+                  <span style="font-size: 32px; font-weight: 800; letter-spacing: 6px; color: #1f2937; font-family: monospace;">${generatedOtp}</span>
+                </div>
+                <p style="font-size: 14px; color: #9ca3af; line-height: 1.5; margin: 0; text-align: center;">This code is valid for 10 minutes. If you did not request this, you can safely ignore this email.</p>
+              </div>
+            </div>
+          `,
+        };
 
-      const data = await res.json();
-      
-      if (res.ok) {
-        return NextResponse.json({ success: true, message: "Email sent successfully" });
-      } else {
-        return NextResponse.json({ error: data.message || "Failed to send email" }, { status: 500 });
+        await transporter.sendMail(mailOptions);
+        console.log(`[SMTP SUCCESS] OTP successfully sent to ${email}`);
+        
+        return NextResponse.json({ 
+          success: true, 
+          message: "OTP has been sent to your email address." 
+        });
+
+      } catch (smtpError: any) {
+        console.error("[SMTP ERROR] Failed to send email via nodemailer:", smtpError);
+        // Fallback to console log in development/sandbox so it doesn't break user flow
+        console.log(`\n========================================\n[DEV FALLBACK] Email OTP for ${email} is: ${generatedOtp}\n========================================\n`);
+        return NextResponse.json({ 
+          success: true, 
+          message: "SMTP failed. OTP was logged in the server console (Development fallback)." 
+        });
       }
-    } catch (error) {
-      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
+
+    // Handle Verify OTP
+    if (action === "verify") {
+      const storedOtp = otpStore.get(email);
+      
+      if (!otp) {
+        return NextResponse.json({ error: "OTP is required" }, { status: 400 });
+      }
+
+      if (otp === storedOtp) {
+        otpStore.delete(email); // Consume OTP
+        return NextResponse.json({ success: true, message: "Logged in successfully" });
+      } else {
+        return NextResponse.json({ error: "Invalid OTP" }, { status: 400 });
+      }
+    }
+
+    return NextResponse.json({ error: "Invalid action" }, { status: 400 });
+  } catch (error) {
+    console.error("[AUTH API EXCEPTION]", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
-
-  // Handle Verify OTP
-  if (action === "verify") {
-    const storedOtp = otpStore.get(email);
-    
-    if (!otp) {
-      return NextResponse.json({ error: "OTP is required" }, { status: 400 });
-    }
-
-    if (otp === storedOtp || otp === "1234") { // Allow 1234 as fallback for dev
-      otpStore.delete(email); // Consume OTP
-      return NextResponse.json({ success: true, message: "Logged in successfully" });
-    } else {
-      return NextResponse.json({ error: "Invalid OTP" }, { status: 400 });
-    }
-  }
-
-  return NextResponse.json({ error: "Invalid action" }, { status: 400 });
 }

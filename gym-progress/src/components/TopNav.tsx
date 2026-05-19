@@ -1,15 +1,27 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Activity, Dumbbell, Utensils, Target, FileBarChart, User, BarChart2, Settings, ChevronDown, Calendar, Menu, X } from "lucide-react";
+import { Activity, Dumbbell, Utensils, Target, FileBarChart, User, BarChart2, Settings, ChevronDown, Calendar, Menu, X, LogOut } from "lucide-react";
 
 export default function TopNav() {
   const pathname = usePathname();
   const [showDropdown, setShowDropdown] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  useEffect(() => {
+    setIsLoggedIn(localStorage.getItem("isLoggedIn") === "true");
+  }, [pathname]);
+
+  const handleLogout = () => {
+    localStorage.removeItem("isLoggedIn");
+    localStorage.removeItem("userName");
+    localStorage.removeItem("userEmail");
+    window.location.href = "/login";
+  };
+
   if (pathname === "/login") return null;
 
   const mainNavItems = [
@@ -22,8 +34,8 @@ export default function TopNav() {
   const dropdownItems = [
     { name: "Your Metrics", href: "/info", icon: User },
     { name: "Food Chart", href: "/food-chart", icon: BarChart2 },
+    { name: "Daily Routine", href: "/daily-routine", icon: Calendar },
     { name: "Reports", href: "/reports", icon: FileBarChart },
-    { name: "Login", href: "/login", icon: User },
   ];
 
   return (
@@ -81,15 +93,47 @@ export default function TopNav() {
                       <span>{item.name}</span>
                     </Link>
                   ))}
+                  <div className="border-t border-gray-100 my-1"></div>
+                  {isLoggedIn ? (
+                    <button
+                      onClick={() => {
+                        setShowDropdown(false);
+                        handleLogout();
+                      }}
+                      className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors text-left cursor-pointer"
+                    >
+                      <LogOut size={16} className="text-red-500" />
+                      <span>Log Out</span>
+                    </button>
+                  ) : (
+                    <Link
+                      href="/login"
+                      onClick={() => setShowDropdown(false)}
+                      className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-blue-500 transition-colors"
+                    >
+                      <User size={16} className="text-gray-400" />
+                      <span>Login</span>
+                    </Link>
+                  )}
                 </div>
               )}
             </div>
           </nav>
 
           <div className="flex items-center gap-4">
-            <Link href="/login" className="hidden md:block bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm">
-              Get Started
-            </Link>
+            {isLoggedIn ? (
+              <button
+                onClick={handleLogout}
+                className="hidden md:flex items-center gap-1.5 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm cursor-pointer"
+              >
+                <LogOut size={16} />
+                <span>Log Out</span>
+              </button>
+            ) : (
+              <Link href="/login" className="hidden md:block bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm">
+                Get Started
+              </Link>
+            )}
             
             {/* Mobile Menu Button */}
             <button
@@ -138,15 +182,30 @@ export default function TopNav() {
                 <span>{item.name}</span>
               </Link>
             ))}
+
+            <div className="border-t border-gray-50 my-2 pt-2"></div>
             
-            <Link
-              href="/login"
-              onClick={() => setIsMobileMenuOpen(false)}
-              className="flex items-center gap-2 px-4 py-3 rounded-lg text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition-colors"
-            >
-              <User size={18} />
-              <span>Get Started</span>
-            </Link>
+            {isLoggedIn ? (
+              <button
+                onClick={() => {
+                  setIsMobileMenuOpen(false);
+                  handleLogout();
+                }}
+                className="w-full flex items-center gap-2 px-4 py-3 rounded-lg text-sm font-medium bg-red-500 text-white hover:bg-red-600 transition-colors text-left cursor-pointer"
+              >
+                <LogOut size={18} />
+                <span>Log Out</span>
+              </button>
+            ) : (
+              <Link
+                href="/login"
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="flex items-center gap-2 px-4 py-3 rounded-lg text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition-colors"
+              >
+                <User size={18} />
+                <span>Get Started</span>
+              </Link>
+            )}
           </nav>
         </div>
       )}

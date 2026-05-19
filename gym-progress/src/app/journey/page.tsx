@@ -22,6 +22,7 @@ function JourneyContent() {
   const [planDays, setPlanDays] = useState<string[]>([]);
   const [userEmail, setUserEmail] = useState("");
   const [activePlan, setActivePlan] = useState<string | null>(null);
+  const [showConfirmComplete, setShowConfirmComplete] = useState(false);
   
   // Diet States
   const [loggedMeals, setLoggedMeals] = useState<any[]>([]);
@@ -44,7 +45,9 @@ function JourneyContent() {
   // Water States
   const [waterIntake, setWaterIntake] = useState(0); // in ml
 
-  const targets = { calories: 2200, protein: 150, fat: 70 };
+  const [startWeight, setStartWeight] = useState(80); // Fallback
+  const [goalWeight, setGoalWeight] = useState(75); // Fallback
+  const [planDuration, setPlanDuration] = useState(3); // in months
   const [currentWeight, setCurrentWeight] = useState(80); // Fallback
 
   const defaultExerciseDatabase: { [key: string]: string[] } = {
@@ -77,6 +80,9 @@ function JourneyContent() {
     const currentPlan = plans.find((p: any) => p.name === plan);
     if (currentPlan) {
       setCurrentWeight(currentPlan.weight);
+      setStartWeight(currentPlan.weight);
+      setGoalWeight(currentPlan.goalWeight);
+      setPlanDuration(currentPlan.duration);
     }
 
     const savedCustomEx = JSON.parse(localStorage.getItem(`${email}_customExercises`) || "{}");
@@ -245,9 +251,19 @@ function JourneyContent() {
     fat: acc.fat + meal.fat,
   }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
 
-  const calScore = Math.min((currentDiet.calories / targets.calories) * 100, 100);
-  const proteinScore = Math.min((currentDiet.protein / targets.protein) * 100, 100);
-  const fatScore = Math.min((currentDiet.fat / targets.fat) * 100, 100);
+  // --- Complex Target Calculations ---
+  const goalWeightLbs = goalWeight * 2.20462;
+  const maintenanceTDEE = goalWeightLbs * 15;
+  const dailyCalorieAdjustment = ((goalWeight - startWeight) * 2.20462 * 3500) / (planDuration * 30);
+  let targetCalories = Math.round(maintenanceTDEE + dailyCalorieAdjustment);
+  if (targetCalories < 1200 && startWeight > goalWeight) targetCalories = 1200; // Safety floor
+  
+  const targetProtein = Math.round(goalWeightLbs * 1.0);
+  const targetFats = Math.round(goalWeightLbs * 0.4);
+
+  const calScore = Math.min((currentDiet.calories / targetCalories) * 100, 100);
+  const proteinScore = Math.min((currentDiet.protein / targetProtein) * 100, 100);
+  const fatScore = Math.min((currentDiet.fat / targetFats) * 100, 100);
   const waterScore = Math.min((waterIntake / waterTarget) * 100, 100);
   const exerciseScore = exerciseLogs.length > 0 ? 100 : 0;
 
@@ -270,12 +286,8 @@ function JourneyContent() {
   });
 
   // Save Day Progress for Reports
-  const handleCompleteDay = () => {
+  const executeCompleteDay = () => {
     if (!userEmail || !activePlan) return;
-
-    if (!window.confirm("Are you sure you want to finalize today's progress? This will lock in your data for reports.")) {
-      return;
-    }
 
     const dayReport = {
       date: selectedDate,
@@ -310,6 +322,7 @@ function JourneyContent() {
     currentDate.setDate(currentDate.getDate() + 1);
     const nextDateStr = currentDate.toISOString().split('T')[0];
     setSelectedDate(nextDateStr);
+    setShowConfirmComplete(false);
   };
 
   return (
@@ -384,15 +397,15 @@ function JourneyContent() {
                 <div className="space-y-2 text-sm border-t border-gray-50 pt-3">
                   <div className="flex justify-between items-center">
                     <span className="text-gray-500">Calories (25%)</span>
-                    <span className="font-medium text-gray-900">{currentDiet.calories} / {targets.calories} kcal</span>
+                    <span className="font-medium text-gray-900">{currentDiet.calories} / {targetCalories} kcal</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-gray-500">Protein (25%)</span>
-                    <span className="font-medium text-gray-900">{currentDiet.protein} / {targets.protein}g</span>
+                    <span className="font-medium text-gray-900">{currentDiet.protein} / {targetProtein}g</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-gray-500">Fats (15%)</span>
-                    <span className="font-medium text-gray-900">{currentDiet.fat} / {targets.fat}g</span>
+                    <span className="font-medium text-gray-900">{currentDiet.fat} / {targetFats}g</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-gray-500">Hydration (15%)</span>
@@ -621,14 +634,28 @@ function JourneyContent() {
           {/* 5. Complete Day Section */}
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-50 text-center w-full">
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Ready to wrap up?</h3>
-            <p className="text-sm text-gray-500 mb-4">Clicking this will save your progress for today to your reports. This action requires confirmation.</p>
+            <p className="text-sm text-gray-500 mb-4">Clicking this will save your progress for today to your reports.</p>
             <button 
-              onClick={handleCompleteDay}
-              className="bg-green-500 hover:bg-green-600 text-white px-8 py-3 rounded-2xl font-bold text-lg transition-colors flex items-center gap-2 shadow-md mx-auto"
+              onClick={() => setShowConfirmComplete(true)}
+              className="bg-green-500 hover:bg-green-600 text-white px-8 py-3 rounded-2xl font-bold text-lg transition-colors flex items-center gap-2 shadow-md mx-auto cursor-pointer"
             >
-              <Check size={24} /> I have done my today's!
+              <Check size={24} /> Complete Today's Progress
             </button>
           </div>
+
+          {/* Confirmation Modal */}
+          {showConfirmComplete && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+              <div className="bg-white p-6 rounded-3xl max-w-sm w-full mx-4 shadow-xl text-left">
+                <h3 className="text-xl font-bold text-gray-900 mb-2">Complete Day?</h3>
+                <p className="text-gray-500 mb-6">Are you sure you want to finalize today's progress? This will lock in your data for reports.</p>
+                <div className="flex gap-3 justify-end">
+                  <button onClick={() => setShowConfirmComplete(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-xl transition-colors font-medium cursor-pointer">Cancel</button>
+                  <button onClick={executeCompleteDay} className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-xl transition-colors font-medium shadow-sm cursor-pointer">Confirm</button>
+                </div>
+              </div>
+            </div>
+          )}
 
         </div>
       )}

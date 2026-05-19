@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, Suspense } from "react";
-import StrengthChart from "@/components/charts/StrengthChart";
+import { calculateOneRM } from "@/utils/oneRM";
 import { Plus, Trash2, Calendar } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -39,14 +39,20 @@ function ExerciseContent() {
 
     if (email && plan) {
       const savedLogs = JSON.parse(localStorage.getItem(`${email}_${plan}_exerciseLogs`) || "[]");
-      setLogs(savedLogs);
+      // Normalize: ensure date is YYYY-MM-DD, add setNumber if missing
+      const normalizedLogs = savedLogs.map((l: any) => ({
+        ...l,
+        date: typeof l.date === "string" && l.date.length > 10 ? l.date.split('T')[0] : l.date,
+        setNumber: l.setNumber ?? 1,
+      }));
+      setLogs(normalizedLogs);
     }
   }, []);
 
   const handleBodyPartChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const part = e.target.value;
     setBodyPart(part);
-    setExercise(exerciseDatabase[part][0]); // Default to first exercise
+    setExercise(exerciseDatabase[part][0]);
   };
 
   const handleAddLog = (e: React.FormEvent) => {
@@ -56,46 +62,88 @@ function ExerciseContent() {
       return;
     }
 
-    const oneRM = parseFloat(weight) * (1 + parseInt(reps) / 30);
-    
+    const oneRM = calculateOneRM(parseFloat(weight), parseInt(reps));
+    const logDate = date; // Already YYYY-MM-DD
+
+    // Count how many sets of this exercise exist on this day already
+    const existingSets = logs.filter(
+      l => l.date === logDate && l.bodyPart === bodyPart && l.exercise === exercise
+    );
+    const nextSetNumber = existingSets.length + 1;
+
     const newLog = {
-      date: new Date(date).toISOString(),
+      date: logDate,
       bodyPart,
       exercise,
       weight: parseFloat(weight),
       reps: parseInt(reps),
+      setNumber: nextSetNumber,
       oneRM: Math.round(oneRM * 10) / 10,
     };
 
     const updatedLogs = [...logs, newLog];
     localStorage.setItem(`${userEmail}_${activePlan}_exerciseLogs`, JSON.stringify(updatedLogs));
     setLogs(updatedLogs);
-    
     setWeight("");
     setReps("");
-    alert(`Logged: I did ${bodyPart} today with ${exercise} for plan "${activePlan}"!`);
   };
 
-  const handleRemoveLog = (index: number) => {
+  const handleRemoveLog = (logToRemove: any) => {
     if (!userEmail || !activePlan) return;
-    const updated = logs.filter((_, i) => i !== index);
-    setLogs(updated);
-    localStorage.setItem(`${userEmail}_${activePlan}_exerciseLogs`, JSON.stringify(updated));
+    // Remove the specific set entry
+    const updated = logs.filter(l => !(
+      l.date === logToRemove.date &&
+      l.exercise === logToRemove.exercise &&
+      l.bodyPart === logToRemove.bodyPart &&
+      l.setNumber === logToRemove.setNumber
+    ));
+    // Re-number the sets for this exercise on this day
+    let setCounter = 0;
+    const renumbered = updated.map(l => {
+      if (l.date === logToRemove.date && l.exercise === logToRemove.exercise && l.bodyPart === logToRemove.bodyPart) {
+        setCounter++;
+        return { ...l, setNumber: setCounter };
+      }
+      return l;
+    });
+    setLogs(renumbered);
+    localStorage.setItem(`${userEmail}_${activePlan}_exerciseLogs`, JSON.stringify(renumbered));
   };
 
   // Filter logs for display
   const filteredDisplayLogs = logs.filter(log => {
     if (filter === "All") return true;
-    
-    const logDate = new Date(log.date).toISOString().split('T')[0];
+
+    const logDate = log.date;
     const today = new Date().toISOString().split('T')[0];
     const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
 
     if (filter === "Today") return logDate === today;
     if (filter === "Yesterday") return logDate === yesterday;
-    
+
     return log.bodyPart === filter;
   });
+
+  // Group filtered logs by date + exercise for grouped display
+  const groupedLogs: { key: string; date: string; bodyPart: string; exercise: string; sets: any[] }[] = [];
+  filteredDisplayLogs.forEach(log => {
+    const groupKey = `${log.date}_${log.bodyPart}_${log.exercise}`;
+    const existing = groupedLogs.find(g => g.key === groupKey);
+    if (existing) {
+      existing.sets.push(log);
+    } else {
+      groupedLogs.push({
+        key: groupKey,
+        date: log.date,
+        bodyPart: log.bodyPart,
+        exercise: log.exercise,
+        sets: [log],
+      });
+    }
+  });
+
+  // Sort groups: newest first
+  groupedLogs.sort((a, b) => b.date.localeCompare(a.date));
 
   // Filter logs for chart
   const chartLogs = logs.filter(l => l.exercise === exercise);
@@ -187,9 +235,14 @@ function ExerciseContent() {
                 </div>
               </div>
 
+              {/* Show what set number this will be */}
+              <div className="text-xs text-gray-500 text-center">
+                This will be <span className="font-bold text-gray-900">Set {logs.filter(l => l.date === date && l.bodyPart === bodyPart && l.exercise === exercise).length + 1}</span> for {exercise} today
+              </div>
+
               <button 
                 type="submit"
-                className="w-full bg-blue-500 hover:bg-blue-600 text-white py-3 rounded-lg transition-colors font-medium flex items-center justify-center gap-2 shadow-sm"
+                className="w-full bg-blue-500 hover:bg-blue-600 text-white py-3 rounded-lg transition-colors font-medium flex items-center justify-center gap-2 shadow-sm cursor-pointer"
               >
                 <Plus size={18} /> Add Set
               </button>
@@ -212,7 +265,7 @@ function ExerciseContent() {
               </div>
             </div>
 
-            {/* Better Organised Recent Workouts */}
+            {/* Grouped Recent Workouts */}
             <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
                 <h2 className="text-xl font-semibold text-gray-900">Recent Workouts</h2>
@@ -223,7 +276,7 @@ function ExerciseContent() {
                     <button
                       key={f}
                       onClick={() => setFilter(f)}
-                      className={`text-xs font-medium px-3 py-1.5 rounded-lg transition-colors ${
+                      className={`text-xs font-medium px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
                         filter === f 
                           ? 'bg-blue-500 text-white' 
                           : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
@@ -235,56 +288,61 @@ function ExerciseContent() {
                 </div>
               </div>
 
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-gray-200 text-gray-500 text-sm">
-                      <th className="pb-3 font-medium">Date</th>
-                      <th className="pb-3 font-medium">Summary</th>
-                      <th className="pb-3 font-medium">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="text-sm text-gray-700">
-                    {filteredDisplayLogs.length === 0 ? (
-                      <tr>
-                        <td colSpan={3} className="py-4 text-center text-gray-500">No exercises found for this filter.</td>
-                      </tr>
-                    ) : (
-                      filteredDisplayLogs.map((log, index) => {
-                        const logDate = new Date(log.date).toISOString().split('T')[0];
-                        const today = new Date().toISOString().split('T')[0];
-                        const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+              <div className="space-y-4">
+                {groupedLogs.length === 0 ? (
+                  <p className="py-4 text-center text-gray-500">No exercises found for this filter.</p>
+                ) : (
+                  groupedLogs.map((group) => {
+                    const today = new Date().toISOString().split('T')[0];
+                    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+                    const dateLabel = group.date === today ? "Today" : group.date === yesterday ? "Yesterday" : new Date(group.date).toLocaleDateString();
+
+                    return (
+                      <div key={group.key} className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                        {/* Exercise Header */}
+                        <div className="flex justify-between items-center mb-3">
+                          <div className="flex items-center gap-2">
+                            {group.date === today || group.date === yesterday ? (
+                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${group.date === today ? 'bg-blue-50 text-blue-500' : 'bg-gray-200 text-gray-600'}`}>
+                                {dateLabel}
+                              </span>
+                            ) : (
+                              <span className="text-xs text-gray-500 flex items-center gap-1"><Calendar size={12} /> {dateLabel}</span>
+                            )}
+                            <span className="font-semibold text-gray-900">{group.exercise}</span>
+                            <span className="text-xs text-gray-400">({group.bodyPart})</span>
+                          </div>
+                          <span className="text-xs font-bold text-blue-500 bg-blue-50 px-2 py-0.5 rounded-full">
+                            {group.sets.length} {group.sets.length === 1 ? 'set' : 'sets'}
+                          </span>
+                        </div>
                         
-                        const dateLabel = logDate === today ? "Today" : logDate === yesterday ? "Yesterday" : new Date(log.date).toLocaleDateString();
-                        
-                        return (
-                          <tr key={index} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                            <td className="py-3 flex items-center gap-1">
-                              {logDate === today || logDate === yesterday ? (
-                                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${logDate === today ? 'bg-blue-50 text-blue-500' : 'bg-gray-100 text-gray-600'}`}>
-                                  {dateLabel}
-                                </span>
-                              ) : (
-                                <span className="text-gray-500 flex items-center gap-1"><Calendar size={12} /> {dateLabel}</span>
-                              )}
-                            </td>
-                            <td className="py-3">
-                              I did <span className="font-medium text-blue-500">{log.bodyPart}</span> with <span className="font-medium">{log.exercise}</span>: {log.weight}kg x {log.reps} reps.
-                            </td>
-                            <td className="py-3">
-                              <button 
-                                onClick={() => handleRemoveLog(index)}
-                                className="text-gray-400 hover:text-red-500 p-1 hover:bg-gray-100 rounded transition-colors"
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
+                        {/* Individual Sets */}
+                        <div className="space-y-1">
+                          {group.sets
+                            .sort((a: any, b: any) => (a.setNumber || 1) - (b.setNumber || 1))
+                            .map((set: any, idx: number) => (
+                              <div key={idx} className="flex justify-between items-center bg-white rounded-lg px-3 py-2 text-sm">
+                                <div className="flex items-center gap-3">
+                                  <span className="font-bold text-gray-900 w-12">Set {set.setNumber || idx + 1}</span>
+                                  <span className="text-gray-700">
+                                    <span className="font-medium text-gray-900">{set.weight}kg</span> × <span className="font-medium text-gray-900">{set.reps} reps</span>
+                                  </span>
+                                  <span className="text-xs text-gray-400">1RM: {set.oneRM}kg</span>
+                                </div>
+                                <button 
+                                  onClick={() => handleRemoveLog(set)}
+                                  className="text-gray-400 hover:text-red-500 p-1 hover:bg-gray-100 rounded transition-colors cursor-pointer"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+                            ))}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
               </div>
             </div>
           </div>
