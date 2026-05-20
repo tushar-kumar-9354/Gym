@@ -18,6 +18,9 @@ export default function Plans() {
   const [height, setHeight] = useState("");
   const [goalWeight, setGoalWeight] = useState("");
   const [duration, setDuration] = useState("3");
+  const [activityLevel, setActivityLevel] = useState("moderate");
+  const [sleepTarget, setSleepTarget] = useState("8");
+  const [goal, setGoal] = useState("General Fitness");
 
   useEffect(() => {
     const email = localStorage.getItem("userEmail") || "";
@@ -47,6 +50,9 @@ export default function Plans() {
       height: parseFloat(height),
       goalWeight: parseFloat(goalWeight),
       duration: parseInt(duration),
+      activityLevel,
+      sleepTarget: parseInt(sleepTarget),
+      goal,
       date: editingPlan ? editingPlan.date : new Date().toISOString(),
     };
 
@@ -89,6 +95,9 @@ export default function Plans() {
     setHeight(plan.height.toString());
     setGoalWeight(plan.goalWeight.toString());
     setDuration(plan.duration.toString());
+    setActivityLevel(plan.activityLevel || "moderate");
+    setSleepTarget((plan.sleepTarget || 8).toString());
+    setGoal(plan.goal || "General Fitness");
     setShowForm(true);
   };
 
@@ -235,6 +244,51 @@ export default function Plans() {
                   <option value="6">6 Months</option>
                   <option value="12">1 Year</option>
                 </select>
+              </div>
+            </div>
+
+            {/* Goal Type */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Primary Goal</label>
+              <select
+                value={goal}
+                onChange={(e) => setGoal(e.target.value)}
+                className="w-full bg-gray-50 border border-gray-100 rounded-2xl py-2.5 px-4 text-gray-900 focus:outline-none focus:border-blue-500"
+              >
+                <option value="Fat Loss">Fat Loss</option>
+                <option value="Muscle Gain">Muscle Gain / Bulk</option>
+                <option value="Maintenance">Maintenance</option>
+                <option value="General Fitness">General Fitness</option>
+                <option value="Athletic Performance">Athletic Performance</option>
+              </select>
+            </div>
+
+            {/* Activity Level + Sleep Target */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Activity Level</label>
+                <select
+                  value={activityLevel}
+                  onChange={(e) => setActivityLevel(e.target.value)}
+                  className="w-full bg-gray-50 border border-gray-100 rounded-2xl py-2.5 px-4 text-gray-900 focus:outline-none focus:border-blue-500"
+                >
+                  <option value="sedentary">Sedentary (desk job, no gym)</option>
+                  <option value="light">Lightly Active (1–2 days/week)</option>
+                  <option value="moderate">Moderately Active (3–5 days/week)</option>
+                  <option value="active">Very Active (6–7 days/week)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Sleep Target (hours)</label>
+                <input
+                  type="number"
+                  min="5"
+                  max="12"
+                  value={sleepTarget}
+                  onChange={(e) => setSleepTarget(e.target.value)}
+                  className="w-full bg-gray-50 border border-gray-100 rounded-2xl py-2.5 px-4 text-gray-900 focus:outline-none focus:border-blue-500"
+                />
+                <p className="text-xs text-gray-400 mt-1">Recommended: 7–9 hrs for most goals</p>
               </div>
             </div>
 

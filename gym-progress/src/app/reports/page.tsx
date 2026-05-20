@@ -34,12 +34,25 @@ export default function ReportsExport() {
   });
 
   const generateAITextReport = () => {
-    let report = `GYMPROGRESS+ FITNESS REPORT FOR AI ANALYSIS\n`;
+    const totalDays = dailyReports.length;
+    const avgScore = totalDays > 0 ? Math.round(dailyReports.reduce((acc, d) => acc + d.score, 0) / totalDays) : 0;
+    const avgSleep = totalDays > 0 ? (dailyReports.reduce((acc, d) => acc + (d.sleepHours || 0), 0) / totalDays).toFixed(1) : "0";
+    const avgCalories = totalDays > 0 ? Math.round(dailyReports.reduce((acc, d) => acc + d.calories, 0) / totalDays) : 0;
+
+    let report = `GYMPROGRESS+ PREMIUM HEALTH & FITNESS REPORT\n`;
     report += `==================================================\n`;
     report += `User Email: ${userEmail}\n`;
     report += `Active Plan: ${activePlan || "N/A"}\n`;
     report += `Generated On: ${new Date().toLocaleString()}\n`;
-    report += `Total Days Finalized: ${dailyReports.length}\n`;
+    report += `==================================================\n\n`;
+
+    report += `==================================================\n`;
+    report += `DETAILED REPORT SUMMARY\n`;
+    report += `==================================================\n`;
+    report += `- Total Finalized Days: ${totalDays}\n`;
+    report += `- Average Daily Score: ${avgScore}%\n`;
+    report += `- Average Sleep Duration: ${avgSleep} hours\n`;
+    report += `- Average Calories Consumed: ${avgCalories} kcal\n`;
     report += `==================================================\n\n`;
 
     report += `==================================================\n`;
@@ -62,6 +75,9 @@ export default function ReportsExport() {
       report += `DAY ${index + 1}: ${day.date}\n`;
       report += `--------------------------------------------------\n`;
       report += `Overall Day Score: ${day.score}%\n`;
+      report += `Sleep & Recovery:\n`;
+      report += `  - Hours Slept: ${day.sleepHours !== null && day.sleepHours !== undefined ? `${day.sleepHours}h` : "N/A"}\n`;
+      report += `  - Sleep Quality: ${day.sleepQuality || "N/A"}\n`;
       report += `Nutrition:\n`;
       report += `  - Calories: ${day.calories} kcal\n`;
       report += `  - Protein: ${day.protein}g\n`;
@@ -218,10 +234,11 @@ export default function ReportsExport() {
                       <span className="font-bold text-gray-900">{day.date}</span>
                       <span className="bg-blue-50 text-blue-500 px-2 py-1 rounded text-xs font-bold">Score: {day.score}%</span>
                     </div>
-                    <div className="grid grid-cols-3 gap-2 text-xs text-gray-600">
+                    <div className="grid grid-cols-4 gap-2 text-xs text-gray-600">
                       <div>🍴 {day.calories} kcal</div>
                       <div>💧 {day.water}ml</div>
                       <div>🏋️‍♂️ {day.exercises?.length || 0} exercises</div>
+                      <div>😴 {day.sleepHours !== null && day.sleepHours !== undefined ? `${day.sleepHours}h` : "N/A"} sleep</div>
                     </div>
                   </div>
                 ))}

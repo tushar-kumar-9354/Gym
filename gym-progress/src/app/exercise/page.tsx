@@ -1,10 +1,11 @@
 "use client";
 
 import React, { useState, useEffect, Suspense } from "react";
-import { calculateOneRM } from "@/utils/oneRM";
+import { calculateOneRM, getExerciseTrackingType, formatExerciseValue } from "@/utils/oneRM";
 import { Plus, Trash2, Calendar } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
+import StrengthChart from "@/components/charts/StrengthChart";
 
 function ExerciseContent() {
   const searchParams = useSearchParams();
@@ -15,10 +16,12 @@ function ExerciseContent() {
   const [exercise, setExercise] = useState("Bench Press");
   const [weight, setWeight] = useState("");
   const [reps, setReps] = useState("");
+  const [minutes, setMinutes] = useState("");
+  const [seconds, setSeconds] = useState("");
   const [logs, setLogs] = useState<any[]>([]);
   const [userEmail, setUserEmail] = useState("");
   const [activePlan, setActivePlan] = useState<string | null>(null);
-  
+
   // Filter state
   const [filter, setFilter] = useState("All");
 
@@ -28,6 +31,7 @@ function ExerciseContent() {
     Legs: ["Squat", "Leg Press", "Calf Raises"],
     Shoulders: ["Overhead Press", "Lateral Raises"],
     Arms: ["Bicep Curls", "Tricep Pushdowns"],
+    Abs: ["Plank", "Crunches", "Leg Raises", "Russian Twists"],
   };
 
   useEffect(() => {
@@ -57,13 +61,47 @@ function ExerciseContent() {
 
   const handleAddLog = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!weight || !reps || !userEmail || !activePlan) {
+    if (!userEmail || !activePlan) {
       alert("Please select a plan first!");
       return;
     }
 
-    const oneRM = calculateOneRM(parseFloat(weight), parseInt(reps));
-    const logDate = date; // Already YYYY-MM-DD
+    const type = getExerciseTrackingType(exercise, bodyPart);
+    let finalWeight = 0;
+    let finalReps = 0;
+    let finalOneRM = 0;
+
+    if (type === "Time") {
+      const minVal = parseInt(minutes) || 0;
+      const secVal = parseInt(seconds) || 0;
+      const totalSec = minVal * 60 + secVal;
+      if (totalSec <= 0) {
+        alert("Please enter a valid duration!");
+        return;
+      }
+      finalWeight = 0;
+      finalReps = totalSec;
+      finalOneRM = totalSec;
+    } else if (type === "Reps") {
+      const repsVal = parseInt(reps) || 0;
+      if (repsVal <= 0) {
+        alert("Please enter reps!");
+        return;
+      }
+      finalWeight = parseFloat(weight) || 0;
+      finalReps = repsVal;
+      finalOneRM = repsVal;
+    } else {
+      if (!weight || !reps) {
+        alert("Please enter weight and reps!");
+        return;
+      }
+      finalWeight = parseFloat(weight);
+      finalReps = parseInt(reps);
+      finalOneRM = calculateOneRM(finalWeight, finalReps);
+    }
+
+    const logDate = date;
 
     // Count how many sets of this exercise exist on this day already
     const existingSets = logs.filter(
@@ -75,10 +113,10 @@ function ExerciseContent() {
       date: logDate,
       bodyPart,
       exercise,
-      weight: parseFloat(weight),
-      reps: parseInt(reps),
+      weight: finalWeight,
+      reps: finalReps,
       setNumber: nextSetNumber,
-      oneRM: Math.round(oneRM * 10) / 10,
+      oneRM: Math.round(finalOneRM * 10) / 10,
     };
 
     const updatedLogs = [...logs, newLog];
@@ -86,6 +124,8 @@ function ExerciseContent() {
     setLogs(updatedLogs);
     setWeight("");
     setReps("");
+    setMinutes("");
+    setSeconds("");
   };
 
   const handleRemoveLog = (logToRemove: any) => {
@@ -165,9 +205,9 @@ function ExerciseContent() {
           )}
           <div className="flex items-center gap-3 bg-gray-50 px-4 py-2 rounded-lg border border-gray-200">
             <Calendar size={18} className="text-gray-500" />
-            <input 
-              type="date" 
-              value={date} 
+            <input
+              type="date"
+              value={date}
               onChange={(e) => setDate(e.target.value)}
               className="bg-transparent text-gray-900 outline-none text-sm"
             />
@@ -190,7 +230,7 @@ function ExerciseContent() {
             <form onSubmit={handleAddLog} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Body Part</label>
-                <select 
+                <select
                   value={bodyPart}
                   onChange={handleBodyPartChange}
                   className="w-full bg-gray-50 border border-gray-200 rounded-lg py-2.5 px-4 text-gray-900 focus:outline-none focus:border-blue-500"
@@ -201,7 +241,7 @@ function ExerciseContent() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Exercise</label>
-                <select 
+                <select
                   value={exercise}
                   onChange={(e) => setExercise(e.target.value)}
                   className="w-full bg-gray-50 border border-gray-200 rounded-lg py-2.5 px-4 text-gray-900 focus:outline-none focus:border-blue-500"
@@ -209,38 +249,92 @@ function ExerciseContent() {
                   {exerciseDatabase[bodyPart].map(ex => <option key={ex} value={ex}>{ex}</option>)}
                 </select>
               </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Weight (kg)</label>
-                  <input 
-                    type="number" 
-                    value={weight}
-                    onChange={(e) => setWeight(e.target.value)}
-                    placeholder="e.g. 60"
-                    required
-                    className="w-full bg-gray-50 border border-gray-200 rounded-lg py-2.5 px-4 text-gray-900 focus:outline-none focus:border-blue-500"
-                  />
+
+              {getExerciseTrackingType(exercise, bodyPart) === "Time" ? (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Minutes</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={minutes}
+                      onChange={(e) => setMinutes(e.target.value)}
+                      placeholder="e.g. 2"
+                      required
+                      className="w-full bg-gray-50 border border-gray-200 rounded-lg py-2.5 px-4 text-gray-900 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Seconds</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="59"
+                      value={seconds}
+                      onChange={(e) => setSeconds(e.target.value)}
+                      placeholder="e.g. 30"
+                      required
+                      className="w-full bg-gray-50 border border-gray-200 rounded-lg py-2.5 px-4 text-gray-900 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Reps</label>
-                  <input 
-                    type="number" 
-                    value={reps}
-                    onChange={(e) => setReps(e.target.value)}
-                    placeholder="e.g. 8"
-                    required
-                    className="w-full bg-gray-50 border border-gray-200 rounded-lg py-2.5 px-4 text-gray-900 focus:outline-none focus:border-blue-500"
-                  />
+              ) : getExerciseTrackingType(exercise, bodyPart) === "Reps" ? (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Weight (optional)</label>
+                    <input
+                      type="number"
+                      value={weight}
+                      onChange={(e) => setWeight(e.target.value)}
+                      placeholder="Bodyweight"
+                      className="w-full bg-gray-50 border border-gray-200 rounded-lg py-2.5 px-4 text-gray-900 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Reps</label>
+                    <input
+                      type="number"
+                      value={reps}
+                      onChange={(e) => setReps(e.target.value)}
+                      placeholder="e.g. 15"
+                      required
+                      className="w-full bg-gray-50 border border-gray-200 rounded-lg py-2.5 px-4 text-gray-900 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Weight (kg)</label>
+                    <input
+                      type="number"
+                      value={weight}
+                      onChange={(e) => setWeight(e.target.value)}
+                      placeholder="e.g. 60"
+                      required
+                      className="w-full bg-gray-50 border border-gray-200 rounded-lg py-2.5 px-4 text-gray-900 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Reps</label>
+                    <input
+                      type="number"
+                      value={reps}
+                      onChange={(e) => setReps(e.target.value)}
+                      placeholder="e.g. 8"
+                      required
+                      className="w-full bg-gray-50 border border-gray-200 rounded-lg py-2.5 px-4 text-gray-900 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+              )}
 
               {/* Show what set number this will be */}
               <div className="text-xs text-gray-500 text-center">
                 This will be <span className="font-bold text-gray-900">Set {logs.filter(l => l.date === date && l.bodyPart === bodyPart && l.exercise === exercise).length + 1}</span> for {exercise} today
               </div>
 
-              <button 
+              <button
                 type="submit"
                 className="w-full bg-blue-500 hover:bg-blue-600 text-white py-3 rounded-lg transition-colors font-medium flex items-center justify-center gap-2 shadow-sm cursor-pointer"
               >
@@ -269,18 +363,17 @@ function ExerciseContent() {
             <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
                 <h2 className="text-xl font-semibold text-gray-900">Recent Workouts</h2>
-                
+
                 {/* Filter Bar */}
                 <div className="flex flex-wrap gap-2">
                   {["All", "Today", "Yesterday", "Chest", "Back", "Legs"].map((f) => (
                     <button
                       key={f}
                       onClick={() => setFilter(f)}
-                      className={`text-xs font-medium px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
-                        filter === f 
-                          ? 'bg-blue-500 text-white' 
+                      className={`text-xs font-medium px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${filter === f
+                          ? 'bg-blue-500 text-white'
                           : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
-                      }`}
+                        }`}
                     >
                       {f}
                     </button>
@@ -316,28 +409,42 @@ function ExerciseContent() {
                             {group.sets.length} {group.sets.length === 1 ? 'set' : 'sets'}
                           </span>
                         </div>
-                        
+
                         {/* Individual Sets */}
                         <div className="space-y-1">
                           {group.sets
                             .sort((a: any, b: any) => (a.setNumber || 1) - (b.setNumber || 1))
-                            .map((set: any, idx: number) => (
-                              <div key={idx} className="flex justify-between items-center bg-white rounded-lg px-3 py-2 text-sm">
-                                <div className="flex items-center gap-3">
-                                  <span className="font-bold text-gray-900 w-12">Set {set.setNumber || idx + 1}</span>
-                                  <span className="text-gray-700">
-                                    <span className="font-medium text-gray-900">{set.weight}kg</span> × <span className="font-medium text-gray-900">{set.reps} reps</span>
-                                  </span>
-                                  <span className="text-xs text-gray-400">1RM: {set.oneRM}kg</span>
+                            .map((set: any, idx: number) => {
+                              const trackingType = getExerciseTrackingType(set.exercise, set.bodyPart);
+                              return (
+                                <div key={idx} className="flex justify-between items-center bg-white rounded-lg px-3 py-2 text-sm">
+                                  <div className="flex items-center gap-3">
+                                    <span className="font-bold text-gray-900 w-12">Set {set.setNumber || idx + 1}</span>
+                                    {trackingType === "Time" ? (
+                                      <span className="text-gray-700">
+                                        Duration: <span className="font-medium text-gray-900">{formatExerciseValue(set.reps, "Time")}</span>
+                                      </span>
+                                    ) : trackingType === "Reps" ? (
+                                      <span className="text-gray-700">
+                                        {set.weight > 0 ? <span className="text-xs text-gray-500 mr-2">({set.weight}kg)</span> : null}
+                                        <span className="font-medium text-gray-900">{formatExerciseValue(set.reps, "Reps")}</span>
+                                      </span>
+                                    ) : (
+                                      <span className="text-gray-700">
+                                        <span className="font-medium text-gray-900">{set.weight}kg</span> × <span className="font-medium text-gray-900">{set.reps} reps</span>
+                                        <span className="text-xs text-gray-400 ml-3">1RM: {set.oneRM}kg</span>
+                                      </span>
+                                    )}
+                                  </div>
+                                  <button
+                                    onClick={() => handleRemoveLog(set)}
+                                    className="text-gray-400 hover:text-red-500 p-1 hover:bg-gray-100 rounded transition-colors cursor-pointer"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
                                 </div>
-                                <button 
-                                  onClick={() => handleRemoveLog(set)}
-                                  className="text-gray-400 hover:text-red-500 p-1 hover:bg-gray-100 rounded transition-colors cursor-pointer"
-                                >
-                                  <Trash2 size={14} />
-                                </button>
-                              </div>
-                            ))}
+                              );
+                            })}
                         </div>
                       </div>
                     );

@@ -15,7 +15,8 @@ import {
   Tooltip,
   Legend,
 } from "chart.js";
-import { BarChart2, PieChart, TrendingUp, Droplet, Dumbbell, Coffee, Sparkles, Target } from "lucide-react";
+import { BarChart2, PieChart, TrendingUp, Droplet, Dumbbell, Coffee, Sparkles, Target, Moon } from "lucide-react";
+import { getExerciseTrackingType, formatExerciseValue } from "@/utils/oneRM";
 
 ChartJS.register(
   CategoryScale,
@@ -38,6 +39,8 @@ export default function Visualise() {
   const [loggedMeals, setLoggedMeals] = useState<any[]>([]);
   const [weeklyWeights, setWeeklyWeights] = useState<any[]>([]);
   const [waterIntake, setWaterIntake] = useState<{ [key: string]: number }>({});
+  const [dailyReports, setDailyReports] = useState<any[]>([]);
+  const [sleepLogs, setSleepLogs] = useState<{ [key: string]: { hours: number; quality: string } }>({});
 
   // Plan Details
   const [goalWeight, setGoalWeight] = useState(75);
@@ -55,6 +58,7 @@ export default function Visualise() {
     Legs: ["Squat", "Leg Press", "Calf Raises"],
     Shoulders: ["Overhead Press", "Lateral Raises"],
     Arms: ["Bicep Curls", "Tricep Pushdowns"],
+    Abs: ["Plank", "Crunches", "Leg Raises", "Russian Twists"],
   };
 
   useEffect(() => {
@@ -87,6 +91,12 @@ export default function Visualise() {
 
       const savedCustomEx = JSON.parse(localStorage.getItem(`${email}_customExercises`) || "{}");
       setCustomExerciseDB(savedCustomEx);
+
+      const reports = JSON.parse(localStorage.getItem(`${email}_${plan}_dailyReports`) || "[]");
+      setDailyReports(reports);
+
+      const slpLogs = JSON.parse(localStorage.getItem(`${email}_${plan}_sleepLogs`) || "{}");
+      setSleepLogs(slpLogs);
     }
   }, []);
 
@@ -154,9 +164,41 @@ export default function Visualise() {
     ],
   };
 
-  // 3. Calorie Adherence (Bar) - Last 7 days
+  // 3. Calorie Adherence (Bar) - Last 7 days (dynamically based on the latest logged date, supporting future days)
   const last7Days = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date();
+    let latestLogDate = new Date();
+
+    // Check meals
+    loggedMeals.forEach((m: any) => {
+      const d = new Date(m.date);
+      if (d > latestLogDate) latestLogDate = d;
+    });
+
+    // Check exercises
+    exerciseLogs.forEach((e: any) => {
+      const d = new Date(e.date);
+      if (d > latestLogDate) latestLogDate = d;
+    });
+
+    // Check weights
+    weeklyWeights.forEach((w: any) => {
+      const d = new Date(w.date);
+      if (d > latestLogDate) latestLogDate = d;
+    });
+
+    // Check water
+    Object.keys(waterIntake).forEach((dateStr: string) => {
+      const d = new Date(dateStr);
+      if (d > latestLogDate) latestLogDate = d;
+    });
+
+    // Check sleep
+    Object.keys(sleepLogs).forEach((dateStr: string) => {
+      const d = new Date(dateStr);
+      if (d > latestLogDate) latestLogDate = d;
+    });
+
+    const d = new Date(latestLogDate);
     d.setDate(d.getDate() - i);
     return d.toISOString().split('T')[0];
   }).reverse();
@@ -185,7 +227,7 @@ export default function Visualise() {
         fill: false,
         pointRadius: 0,
       },
-    ],
+    ] as any[],
   };
 
   // 4. Exercise Body Part Distribution (Polar Area)
@@ -299,11 +341,14 @@ export default function Visualise() {
   const strengthDates = filteredLogs.map(log => new Date(log.date).toLocaleDateString());
   const strengthValues = filteredLogs.map(log => log.oneRM);
 
+  const trackingType = getExerciseTrackingType(selectedExercise, selectedBodyPart);
+  const strengthLabel = trackingType === "Time" ? `Max Duration (s)` : trackingType === "Reps" ? `Max Reps` : `1RM (kg)`;
+
   const strengthData = {
     labels: strengthDates.length > 0 ? strengthDates : ["No Data"],
     datasets: [
       {
-        label: `1RM for ${selectedExercise} (kg)`,
+        label: `${strengthLabel} for ${selectedExercise}`,
         data: strengthValues.length > 0 ? strengthValues : [0],
         borderColor: "#3b82f6",
         backgroundColor: "rgba(59, 130, 246, 0.1)",
@@ -313,6 +358,92 @@ export default function Visualise() {
         fill: true,
       },
     ],
+  };
+
+  const strengthOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        display: true,
+        position: "top" as const,
+        labels: { color: "#6b7280", font: { size: 11 } },
+      },
+      tooltip: {
+        callbacks: {
+          label: function (context: any) {
+            const val = context.raw;
+            if (trackingType === "Time") {
+              return `Max Duration: ${formatExerciseValue(val, "Time")}`;
+            } else if (trackingType === "Reps") {
+              return `Max Reps: ${formatExerciseValue(val, "Reps")}`;
+            } else {
+              return `Estimated 1RM: ${val} kg`;
+            }
+          },
+        },
+      },
+    },
+    scales: {
+      y: {
+        grid: { color: "#f3f4f6" },
+        ticks: {
+          color: "#9ca3af",
+          callback: function (value: any) {
+            if (trackingType === "Time") {
+              return formatExerciseValue(value, "Time");
+            } else if (trackingType === "Reps") {
+              return formatExerciseValue(value, "Reps");
+            } else {
+              return `${value} kg`;
+            }
+          },
+        },
+      },
+      x: { grid: { display: false }, ticks: { color: "#9ca3af" } },
+    },
+  };
+
+  // 8. Daily Score Trend (last 7 days from dailyReports)
+  const scoreByDate: { [key: string]: number } = {};
+  dailyReports.forEach(r => { scoreByDate[r.date] = r.score; });
+  const scoreTrendData = {
+    labels: last7Days.map(d => new Date(d).toLocaleDateString('en-US', { weekday: 'short' })),
+    datasets: [
+      {
+        label: "Daily Score (%)",
+        data: last7Days.map(d => scoreByDate[d] ?? 0),
+        backgroundColor: last7Days.map(d => (scoreByDate[d] ?? 0) >= 80 ? "#22c55e" : (scoreByDate[d] ?? 0) >= 50 ? "#eab308" : "#f87171"),
+        borderRadius: 6,
+      },
+    ] as any[],
+  };
+
+  // 9. Sleep Trend (last 7 days)
+  const sleepTrendData = {
+    labels: last7Days.map(d => new Date(d).toLocaleDateString('en-US', { weekday: 'short' })),
+    datasets: [
+      {
+        label: "Hours Slept",
+        data: last7Days.map(d => sleepLogs[d]?.hours ?? null),
+        borderColor: "#a855f7",
+        backgroundColor: "rgba(168,85,247,0.15)",
+        borderWidth: 2,
+        tension: 0.4,
+        fill: true,
+        pointRadius: 5,
+        spanGaps: true,
+      },
+      {
+        label: "Target (8h)",
+        data: Array(7).fill(8),
+        borderColor: "#d8b4fe",
+        borderDash: [5, 5],
+        borderWidth: 2,
+        pointRadius: 0,
+        fill: false,
+      },
+    ] as any[],
   };
 
   const options = {
@@ -389,7 +520,7 @@ export default function Visualise() {
             </div>
             <div className="h-64">
               {filteredLogs.length > 0 ? (
-                <Line data={strengthData} options={options} />
+                <Line data={strengthData} options={strengthOptions} />
               ) : (
                 <div className="text-center py-20 text-gray-500 text-sm">No logs for this exercise yet.</div>
               )}
@@ -453,6 +584,28 @@ export default function Visualise() {
             </div>
             <div className="h-64 flex justify-center">
               <PolarArea data={polarData} options={{ ...options, scales: { r: { grid: { color: "#f3f4f6" }, ticks: { display: false } } } }} />
+            </div>
+          </div>
+
+          {/* Chart 8: Daily Score Trend */}
+          <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-50">
+            <div className="flex items-center gap-2 mb-4">
+              <Sparkles className="text-blue-500" size={20} />
+              <h2 className="text-lg font-semibold text-gray-900">Daily Score Trend (Last 7 Days)</h2>
+            </div>
+            <div className="h-64">
+              <Bar data={scoreTrendData} options={options} />
+            </div>
+          </div>
+
+          {/* Chart 9: Sleep Trend */}
+          <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-50">
+            <div className="flex items-center gap-2 mb-4">
+              <Moon className="text-purple-500" size={20} />
+              <h2 className="text-lg font-semibold text-gray-900">Sleep Trend (Last 7 Days)</h2>
+            </div>
+            <div className="h-64">
+              <Line data={sleepTrendData} options={options} />
             </div>
           </div>
 

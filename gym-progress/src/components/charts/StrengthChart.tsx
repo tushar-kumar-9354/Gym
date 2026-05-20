@@ -12,6 +12,7 @@ import {
   Legend
 } from "chart.js";
 import { Line } from "react-chartjs-2";
+import { getExerciseTrackingType, formatExerciseValue } from "@/utils/oneRM";
 
 ChartJS.register(
   CategoryScale,
@@ -30,11 +31,24 @@ interface StrengthChartProps {
 }
 
 export default function StrengthChart({ dates, oneRMs, exerciseName }: StrengthChartProps) {
+  const trackingType = getExerciseTrackingType(exerciseName);
+  
+  let datasetLabel = `${exerciseName} Estimated 1RM (kg)`;
+  let yAxisTitle = "Estimated 1RM (kg)";
+  
+  if (trackingType === "Time") {
+    datasetLabel = `${exerciseName} Max Time`;
+    yAxisTitle = "Time (seconds)";
+  } else if (trackingType === "Reps") {
+    datasetLabel = `${exerciseName} Max Reps`;
+    yAxisTitle = "Reps";
+  }
+
   const chartData = {
     labels: dates,
     datasets: [
       {
-        label: `${exerciseName} Estimated 1RM (kg)`,
+        label: datasetLabel,
         data: oneRMs,
         borderColor: "#8b5cf6", // Accent color
         backgroundColor: "rgba(139, 92, 246, 0.2)",
@@ -63,6 +77,12 @@ export default function StrengthChart({ dates, oneRMs, exerciseName }: StrengthC
       tooltip: {
         mode: "index" as const,
         intersect: false,
+        callbacks: {
+          label: function (context: any) {
+            const val = context.parsed.y;
+            return ` ${exerciseName}: ${formatExerciseValue(val, trackingType)}`;
+          }
+        }
       },
     },
     scales: {
@@ -72,10 +92,15 @@ export default function StrengthChart({ dates, oneRMs, exerciseName }: StrengthC
       },
       y: {
         grid: { color: "rgba(255, 255, 255, 0.05)" },
-        ticks: { color: "#9ca3af" },
+        ticks: {
+          color: "#9ca3af",
+          callback: function (value: any) {
+            return formatExerciseValue(value, trackingType);
+          }
+        },
         title: {
           display: true,
-          text: "Estimated 1RM (kg)",
+          text: yAxisTitle,
           color: "#6b7280"
         }
       },

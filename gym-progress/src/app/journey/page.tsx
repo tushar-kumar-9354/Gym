@@ -1,10 +1,11 @@
 "use client";
 
 import React, { useState, useEffect, Suspense } from "react";
-import { Calendar as CalendarIcon, CheckCircle2, Trash2, Plus, Search, Loader2, ArrowRight, Dumbbell, Coffee, Droplet, Scale, PieChart, Check } from "lucide-react";
+import { Calendar as CalendarIcon, CheckCircle2, Trash2, Plus, Search, Loader2, ArrowRight, Dumbbell, Coffee, Droplet, Scale, PieChart, Check, Moon } from "lucide-react";
 import ProgressBar from "@/components/ProgressBar";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { getExerciseTrackingType, formatExerciseValue, calculateOneRM } from "@/utils/oneRM";
 
 interface FoodItem {
   name: string;
@@ -35,6 +36,8 @@ function JourneyContent() {
   const [exercise, setExercise] = useState("Bench Press");
   const [weight, setWeight] = useState("");
   const [reps, setReps] = useState("");
+  const [minutes, setMinutes] = useState("");
+  const [seconds, setSeconds] = useState("");
   const [exerciseLogs, setExerciseLogs] = useState<any[]>([]);
   const [filter, setFilter] = useState("All");
   
@@ -43,12 +46,20 @@ function JourneyContent() {
   const [customExerciseDB, setCustomExerciseDB] = useState<{ [key: string]: string[] }>({});
 
   // Water States
-  const [waterIntake, setWaterIntake] = useState(0); // in ml
+  const [waterIntake, setWaterIntake] = useState(0);
 
-  const [startWeight, setStartWeight] = useState(80); // Fallback
-  const [goalWeight, setGoalWeight] = useState(75); // Fallback
-  const [planDuration, setPlanDuration] = useState(3); // in months
-  const [currentWeight, setCurrentWeight] = useState(80); // Fallback
+  // Sleep States
+  const [sleepHours, setSleepHours] = useState<number | "">("");
+  const [sleepQuality, setSleepQuality] = useState("Good");
+  const [savedSleep, setSavedSleep] = useState<{ hours: number; quality: string } | null>(null);
+
+  const [startWeight, setStartWeight] = useState(80);
+  const [goalWeight, setGoalWeight] = useState(75);
+  const [planDuration, setPlanDuration] = useState(3);
+  const [currentWeight, setCurrentWeight] = useState(80);
+  const [sleepTarget, setSleepTargetState] = useState(8);
+  const [goal, setGoal] = useState("General Fitness");
+  const [activityLevel, setActivityLevel] = useState("moderate");
 
   const defaultExerciseDatabase: { [key: string]: string[] } = {
     Chest: ["Bench Press", "Incline Dumbbell Press", "Chest Flyes"],
@@ -56,6 +67,7 @@ function JourneyContent() {
     Legs: ["Squat", "Leg Press", "Calf Raises"],
     Shoulders: ["Overhead Press", "Lateral Raises"],
     Arms: ["Bicep Curls", "Tricep Pushdowns"],
+    Abs: ["Plank", "Crunches", "Leg Raises", "Russian Twists"],
   };
 
   const defaultFoods: FoodItem[] = [
@@ -83,6 +95,9 @@ function JourneyContent() {
       setStartWeight(currentPlan.weight);
       setGoalWeight(currentPlan.goalWeight);
       setPlanDuration(currentPlan.duration);
+      setSleepTargetState(currentPlan.sleepTarget || 8);
+      setGoal(currentPlan.goal || "General Fitness");
+      setActivityLevel(currentPlan.activityLevel || "moderate");
     }
 
     const savedCustomEx = JSON.parse(localStorage.getItem(`${email}_customExercises`) || "{}");
@@ -115,6 +130,12 @@ function JourneyContent() {
     setLoggedMeals(dayMeals);
     setExerciseLogs(dayExercises);
     setWaterIntake(water[date] || 0);
+
+    // Load sleep
+    const sleepLogs = JSON.parse(localStorage.getItem(`${email}_${plan}_sleepLogs`) || "{}");
+    const daySlp = sleepLogs[date];
+    if (daySlp) { setSavedSleep(daySlp); setSleepHours(daySlp.hours); setSleepQuality(daySlp.quality); }
+    else { setSavedSleep(null); setSleepHours(""); setSleepQuality("Good"); }
   };
 
   // Diet Handlers
@@ -205,21 +226,59 @@ function JourneyContent() {
 
   const handleAddLog = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!weight || !reps || !userEmail || !activePlan || !exercise) return;
-    const oneRM = parseFloat(weight) * (1 + parseInt(reps) / 30);
+    if (!userEmail || !activePlan || !exercise) return;
+
+    const type = getExerciseTrackingType(exercise, bodyPart);
+    let finalWeight = 0;
+    let finalReps = 0;
+    let finalOneRM = 0;
+
+    if (type === "Time") {
+      const minVal = parseInt(minutes) || 0;
+      const secVal = parseInt(seconds) || 0;
+      const totalSec = minVal * 60 + secVal;
+      if (totalSec <= 0) {
+        alert("Please enter a valid duration!");
+        return;
+      }
+      finalWeight = 0;
+      finalReps = totalSec;
+      finalOneRM = totalSec;
+    } else if (type === "Reps") {
+      const repsVal = parseInt(reps) || 0;
+      if (repsVal <= 0) {
+        alert("Please enter reps!");
+        return;
+      }
+      finalWeight = parseFloat(weight) || 0;
+      finalReps = repsVal;
+      finalOneRM = repsVal;
+    } else {
+      if (!weight || !reps) {
+        alert("Please enter weight and reps!");
+        return;
+      }
+      finalWeight = parseFloat(weight);
+      finalReps = parseInt(reps);
+      finalOneRM = calculateOneRM(finalWeight, finalReps);
+    }
+
     const newLog = {
       date: new Date(selectedDate).toISOString(),
       bodyPart,
       exercise,
-      weight: parseFloat(weight),
-      reps: parseInt(reps),
-      oneRM: Math.round(oneRM * 10) / 10,
+      weight: finalWeight,
+      reps: finalReps,
+      oneRM: Math.round(finalOneRM * 10) / 10,
     };
     const savedLogs = JSON.parse(localStorage.getItem(`${userEmail}_${activePlan}_exerciseLogs`) || "[]");
     const updatedLogs = [...savedLogs, newLog];
     localStorage.setItem(`${userEmail}_${activePlan}_exerciseLogs`, JSON.stringify(updatedLogs));
     setExerciseLogs(updatedLogs.filter((e: any) => new Date(e.date).toISOString().split('T')[0] === selectedDate));
-    setWeight(""); setReps("");
+    setWeight(""); 
+    setReps("");
+    setMinutes("");
+    setSeconds("");
     alert(`Logged: ${exercise}!`);
   };
 
@@ -233,7 +292,13 @@ function JourneyContent() {
   };
 
   // Water Handlers
-  const waterTarget = Math.round(currentWeight * 35); // 35ml per kg
+  // Dynamic scientific water target formula
+  const baseHydration = currentWeight * 35;
+  const gainGoalHydration = /muscle|bulk|gain/i.test(goal);
+  const goalBonusHydration = gainGoalHydration ? 500 : 0;
+  const hydrationMultipliers: Record<string, number> = { sedentary: 1.0, light: 1.1, moderate: 1.2, active: 1.3 };
+  const hydrationMultiplier = hydrationMultipliers[activityLevel?.toLowerCase()] ?? 1.2;
+  const waterTarget = Math.round((baseHydration + goalBonusHydration) * hydrationMultiplier);
   const handleAddWater = (ml: number) => {
     if (!userEmail || !activePlan) return;
     const water = JSON.parse(localStorage.getItem(`${userEmail}_${activePlan}_waterIntake`) || "{}");
@@ -241,6 +306,17 @@ function JourneyContent() {
     water[selectedDate] = current + ml;
     localStorage.setItem(`${userEmail}_${activePlan}_waterIntake`, JSON.stringify(water));
     setWaterIntake(current + ml);
+  };
+
+  // Sleep Handler
+  const handleSaveSleep = () => {
+    if (!userEmail || !activePlan || sleepHours === "") return;
+    const sleepLogs = JSON.parse(localStorage.getItem(`${userEmail}_${activePlan}_sleepLogs`) || "{}");
+    const entry = { hours: Number(sleepHours), quality: sleepQuality };
+    sleepLogs[selectedDate] = entry;
+    localStorage.setItem(`${userEmail}_${activePlan}_sleepLogs`, JSON.stringify(sleepLogs));
+    setSavedSleep(entry);
+    alert("Sleep logged!");
   };
 
   // --- COMPLEX DAY ANALYSIS ---
@@ -258,21 +334,44 @@ function JourneyContent() {
   let targetCalories = Math.round(maintenanceTDEE + dailyCalorieAdjustment);
   if (targetCalories < 1200 && startWeight > goalWeight) targetCalories = 1200; // Safety floor
   
-  const targetProtein = Math.round(goalWeightLbs * 1.0);
+  const targetProtein = Math.round(currentWeight * 1.8);
   const targetFats = Math.round(goalWeightLbs * 0.4);
 
-  const calScore = Math.min((currentDiet.calories / targetCalories) * 100, 100);
-  const proteinScore = Math.min((currentDiet.protein / targetProtein) * 100, 100);
-  const fatScore = Math.min((currentDiet.fat / targetFats) * 100, 100);
-  const waterScore = Math.min((waterIntake / waterTarget) * 100, 100);
-  const exerciseScore = exerciseLogs.length > 0 ? 100 : 0;
+  // --- Dynamic Scores for Journey Day Completion using Goldilocks Zone Penalty Rule ---
+  
+  // Sleep (30% - Max 30 points. Deduct 2 points for every 1 hour under or over target)
+  const sleepHoursVal = savedSleep ? savedSleep.hours : 0;
+  const sleepPoints = Math.max(0, 30 - Math.abs(sleepHoursVal - sleepTarget) * 2);
+  const sleepScore = (sleepPoints / 30) * 100;
 
+  // Calories (25% - Max 25 points. Deduct 1 point for every 100 calories under or over target)
+  const calPoints = Math.max(0, 25 - (Math.abs(currentDiet.calories - targetCalories) / 100) * 1);
+  const calScore = (calPoints / 25) * 100;
+
+  // Protein (15% - Max 15 points. Deduct 1 point for every 5g under or over target)
+  const proteinPoints = Math.max(0, 15 - (Math.abs(currentDiet.protein - targetProtein) / 5) * 1);
+  const proteinScore = (proteinPoints / 15) * 100;
+
+  // Workout (12% - Max 12 points. Deduct 2 points for every 1 set under or over target of 6 sets)
+  const exercisePoints = Math.max(0, 12 - Math.abs(exerciseLogs.length - 6) * 2);
+  const exerciseScore = (exercisePoints / 12) * 100;
+
+  // Hydration (10% - Max 10 points. Deduct 1 point for every 250ml under or over target)
+  const waterPoints = Math.max(0, 10 - (Math.abs(waterIntake - waterTarget) / 250) * 1);
+  const waterScore = (waterPoints / 10) * 100;
+
+  // Fats (8% - Max 8 points. Deduct 1 point for every 5g under or over target)
+  const fatPoints = Math.max(0, 8 - (Math.abs(currentDiet.fat - targetFats) / 5) * 1);
+  const fatScore = (fatPoints / 8) * 100;
+
+  // Overall Score (Tally out of exactly 100 points)
   const dayCompletionScore = Math.round(
+    (sleepScore * 0.30) +
     (calScore * 0.25) +
-    (proteinScore * 0.25) +
-    (fatScore * 0.15) +
-    (waterScore * 0.15) +
-    (exerciseScore * 0.20)
+    (proteinScore * 0.15) +
+    (exerciseScore * 0.12) +
+    (waterScore * 0.10) +
+    (fatScore * 0.08)
   );
 
   const filteredDisplayLogs = exerciseLogs.filter(log => {
@@ -297,6 +396,8 @@ function JourneyContent() {
       fat: currentDiet.fat,
       carbs: currentDiet.carbs,
       water: waterIntake,
+      sleepHours: savedSleep?.hours ?? null,
+      sleepQuality: savedSleep?.quality ?? null,
       exercises: Object.keys(exerciseSetCounts).map(ex => ({
         name: ex,
         sets: exerciseSetCounts[ex],
@@ -385,41 +486,87 @@ function JourneyContent() {
                 <PieChart className="text-blue-500" size={20} />
                 <h2 className="text-xl font-semibold text-gray-900">Day Analysis</h2>
               </div>
-              <div className="space-y-4">
-                <div>
+              <div className="space-y-3">
+                {/* Overall Score */}
+                <div className="bg-blue-50 rounded-2xl p-3">
                   <div className="flex justify-between text-sm mb-1">
-                    <span className="text-gray-500 font-medium">Daily Score</span>
-                    <span className="font-bold text-blue-500">{dayCompletionScore}%</span>
+                    <span className="text-gray-700 font-bold">Overall Daily Score</span>
+                    <span className={`font-bold text-lg ${dayCompletionScore >= 80 ? 'text-green-500' : dayCompletionScore >= 50 ? 'text-yellow-500' : 'text-red-500'}`}>{dayCompletionScore}%</span>
                   </div>
-                  <ProgressBar label="" progress={dayCompletionScore} colorClass="bg-blue-500" showText={false} />
-                </div>
-                
-                <div className="space-y-2 text-sm border-t border-gray-50 pt-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-500">Calories (25%)</span>
-                    <span className="font-medium text-gray-900">{currentDiet.calories} / {targetCalories} kcal</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-500">Protein (25%)</span>
-                    <span className="font-medium text-gray-900">{currentDiet.protein} / {targetProtein}g</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-500">Fats (15%)</span>
-                    <span className="font-medium text-gray-900">{currentDiet.fat} / {targetFats}g</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-500">Hydration (15%)</span>
-                    <span className="font-medium text-gray-900">{Math.round(waterScore)}%</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-500">Workout (20%)</span>
-                    {exerciseLogs.length > 0 ? (
-                      <span className="text-green-500 font-medium flex items-center gap-1"><CheckCircle2 size={16} /> Done</span>
-                    ) : (
-                      <span className="text-gray-400 font-medium">Not Done</span>
-                    )}
+                  <div className="w-full bg-blue-100 rounded-full h-2">
+                    <div className={`h-2 rounded-full transition-all ${dayCompletionScore >= 80 ? 'bg-green-500' : dayCompletionScore >= 50 ? 'bg-yellow-500' : 'bg-red-400'}`} style={{ width: `${dayCompletionScore}%` }} />
                   </div>
                 </div>
+
+                {/* Per-metric rows */}
+                {[
+                  { label: "Sleep (30%)", val: savedSleep ? `${savedSleep.hours} / ${sleepTarget}h` : `0 / ${sleepTarget}h`, pct: sleepScore, color: "bg-purple-500" },
+                  { label: "Calories (25%)", val: `${currentDiet.calories} / ${targetCalories} kcal`, pct: calScore, color: "bg-orange-400" },
+                  { label: "Protein (15%)", val: `${Math.round(currentDiet.protein)} / ${targetProtein}g`, pct: proteinScore, color: "bg-blue-400" },
+                  { label: "Workout (12%)", val: exerciseLogs.length > 0 ? `${exerciseLogs.length} sets done` : "Not done", pct: exerciseScore, color: "bg-green-400" },
+                  { label: "Hydration (10%)", val: `${(waterIntake/1000).toFixed(1)} / ${(waterTarget/1000).toFixed(1)}L`, pct: waterScore, color: "bg-cyan-400" },
+                  { label: "Fats (8%)", val: `${Math.round(currentDiet.fat)} / ${targetFats}g`, pct: fatScore, color: "bg-purple-400" },
+                ].map(({ label, val, pct, color }) => (
+                  <div key={label}>
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className="text-gray-500">{label}</span>
+                      <span className="font-medium text-gray-700">{val}</span>
+                    </div>
+                    <div className="w-full bg-gray-100 rounded-full h-1.5">
+                      <div className={`h-1.5 rounded-full ${color} transition-all`} style={{ width: `${Math.min(pct, 100)}%` }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Sleep / Recovery Card */}
+            <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-50">
+              <div className="flex items-center gap-2 mb-4">
+                <Moon className="text-purple-500" size={20} />
+                <h2 className="text-xl font-semibold text-gray-900">Sleep & Recovery</h2>
+              </div>
+              <div className="space-y-3">
+                {savedSleep && (
+                  <div className={`p-3 rounded-2xl text-sm font-medium ${
+                    savedSleep.hours >= sleepTarget - 1 && savedSleep.hours <= sleepTarget + 1
+                      ? "bg-green-50 text-green-700 border border-green-100"
+                      : "bg-yellow-50 text-yellow-700 border border-yellow-100"
+                  }`}>
+                    Last saved: {savedSleep.hours}h — {savedSleep.quality} quality
+                    {savedSleep.hours >= sleepTarget - 1 && savedSleep.hours <= sleepTarget + 1
+                      ? " ✅ On track"
+                      : ` ⚠️ Target is ${sleepTarget}h`}
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Hours Slept</label>
+                    <input
+                      type="number" min="0" max="16" step="0.5"
+                      value={sleepHours}
+                      onChange={e => setSleepHours(e.target.value === "" ? "" : Number(e.target.value))}
+                      placeholder={`Target: ${sleepTarget}h`}
+                      className="w-full bg-gray-50 border border-gray-100 rounded-2xl py-2 px-3 text-sm focus:outline-none focus:border-purple-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Sleep Quality</label>
+                    <select
+                      value={sleepQuality}
+                      onChange={e => setSleepQuality(e.target.value)}
+                      className="w-full bg-gray-50 border border-gray-100 rounded-2xl py-2 px-3 text-sm focus:outline-none focus:border-purple-400"
+                    >
+                      {["Poor", "Fair", "Good", "Excellent"].map(q => <option key={q} value={q}>{q}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <button
+                  onClick={handleSaveSleep}
+                  className="w-full bg-purple-500 hover:bg-purple-600 text-white py-2 rounded-2xl text-sm font-medium transition-colors"
+                >
+                  Save Sleep Log
+                </button>
               </div>
             </div>
 
@@ -564,16 +711,40 @@ function JourneyContent() {
               </form>
 
               <form onSubmit={handleAddLog} className="space-y-4 border-t border-gray-50 pt-3">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Weight (kg)</label>
-                    <input type="number" value={weight} onChange={(e) => setWeight(e.target.value)} placeholder="0" required className="w-full bg-white border border-gray-100 rounded-2xl py-2.5 px-3 text-sm text-gray-900 focus:outline-none focus:border-blue-500" />
+                {getExerciseTrackingType(exercise, bodyPart) === "Time" ? (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Minutes</label>
+                      <input type="number" min="0" value={minutes} onChange={(e) => setMinutes(e.target.value)} placeholder="e.g. 2" required className="w-full bg-white border border-gray-100 rounded-2xl py-2.5 px-3 text-sm text-gray-900 focus:outline-none focus:border-blue-500" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Seconds</label>
+                      <input type="number" min="0" max="59" value={seconds} onChange={(e) => setSeconds(e.target.value)} placeholder="e.g. 30" required className="w-full bg-white border border-gray-100 rounded-2xl py-2.5 px-3 text-sm text-gray-900 focus:outline-none focus:border-blue-500" />
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Reps</label>
-                    <input type="number" value={reps} onChange={(e) => setReps(e.target.value)} placeholder="0" required className="w-full bg-white border border-gray-100 rounded-2xl py-2.5 px-3 text-sm text-gray-900 focus:outline-none focus:border-blue-500" />
+                ) : getExerciseTrackingType(exercise, bodyPart) === "Reps" ? (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Weight (optional)</label>
+                      <input type="number" value={weight} onChange={(e) => setWeight(e.target.value)} placeholder="Bodyweight" className="w-full bg-white border border-gray-100 rounded-2xl py-2.5 px-3 text-sm text-gray-900 focus:outline-none focus:border-blue-500" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Reps</label>
+                      <input type="number" value={reps} onChange={(e) => setReps(e.target.value)} placeholder="e.g. 15" required className="w-full bg-white border border-gray-100 rounded-2xl py-2.5 px-3 text-sm text-gray-900 focus:outline-none focus:border-blue-500" />
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Weight (kg)</label>
+                      <input type="number" value={weight} onChange={(e) => setWeight(e.target.value)} placeholder="0" required className="w-full bg-white border border-gray-100 rounded-2xl py-2.5 px-3 text-sm text-gray-900 focus:outline-none focus:border-blue-500" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Reps</label>
+                      <input type="number" value={reps} onChange={(e) => setReps(e.target.value)} placeholder="0" required className="w-full bg-white border border-gray-100 rounded-2xl py-2.5 px-3 text-sm text-gray-900 focus:outline-none focus:border-blue-500" />
+                    </div>
+                  </div>
+                )}
                 <button type="submit" className="w-full bg-blue-500 hover:bg-blue-600 text-white py-3 rounded-2xl text-sm font-medium transition-colors shadow-sm">+ Add Set to Day</button>
               </form>
             </div>
@@ -609,22 +780,39 @@ function JourneyContent() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredDisplayLogs.map((log, index) => (
-                      <tr key={index} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
-                        <td className="py-3 font-medium text-gray-900">{log.exercise}</td>
-                        <td className="py-3 text-gray-500">{log.bodyPart}</td>
-                        <td className="py-3">{log.weight} kg</td>
-                        <td className="py-3">{log.reps}</td>
-                        <td className="py-3 font-semibold text-blue-500">
-                          {exerciseSetCounts[log.exercise] || 1} {exerciseSetCounts[log.exercise] === 1 ? 'set' : 'sets'}
-                        </td>
-                        <td className="py-3">
-                          <button onClick={() => handleRemoveLog(index)} className="text-gray-400 hover:text-red-500 transition-colors">
-                            <Trash2 size={16} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                    {filteredDisplayLogs.map((log, index) => {
+                      const trackingType = getExerciseTrackingType(log.exercise, log.bodyPart);
+                      return (
+                        <tr key={index} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                          <td className="py-3 font-medium text-gray-900">{log.exercise}</td>
+                          <td className="py-3 text-gray-500">{log.bodyPart}</td>
+                          {trackingType === "Time" ? (
+                            <>
+                              <td className="py-3 text-gray-400">—</td>
+                              <td className="py-3 font-medium text-gray-900">{formatExerciseValue(log.reps, "Time")}</td>
+                            </>
+                          ) : trackingType === "Reps" ? (
+                            <>
+                              <td className="py-3">{log.weight > 0 ? `${log.weight} kg` : "Bodyweight"}</td>
+                              <td className="py-3 font-medium text-gray-900">{formatExerciseValue(log.reps, "Reps")}</td>
+                            </>
+                          ) : (
+                            <>
+                              <td className="py-3">{log.weight} kg</td>
+                              <td className="py-3">{log.reps} reps <span className="text-xs text-gray-400 ml-2">(1RM: {log.oneRM}kg)</span></td>
+                            </>
+                          )}
+                          <td className="py-3 font-semibold text-blue-500">
+                            {exerciseSetCounts[log.exercise] || 1} {exerciseSetCounts[log.exercise] === 1 ? 'set' : 'sets'}
+                          </td>
+                          <td className="py-3">
+                            <button onClick={() => handleRemoveLog(index)} className="text-gray-400 hover:text-red-500 transition-colors">
+                              <Trash2 size={16} />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
