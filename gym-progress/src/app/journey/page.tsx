@@ -224,6 +224,29 @@ function JourneyContent() {
     alert(`Custom exercise "${newCustomExercise}" saved for ${bodyPart}!`);
   };
 
+  const handleWeightModifier = (mod: number) => {
+    const currentVal = parseFloat(weight) || 0;
+    const newVal = Math.max(0, currentVal + mod);
+    setWeight(newVal % 1 === 0 ? newVal.toString() : newVal.toFixed(2));
+  };
+
+  const handleRepsModifier = (mod: number) => {
+    const currentVal = parseInt(reps) || 0;
+    const newVal = Math.max(0, currentVal + mod);
+    setReps(newVal.toString());
+  };
+
+  const handleSameAsLast = () => {
+    const savedLogs = JSON.parse(localStorage.getItem(`${userEmail}_${activePlan}_exerciseLogs`) || "[]");
+    if (savedLogs.length > 0) {
+      const lastLog = savedLogs[savedLogs.length - 1];
+      setWeight(lastLog.weight.toString());
+      setReps(lastLog.reps.toString());
+      setBodyPart(lastLog.bodyPart);
+      setExercise(lastLog.exercise);
+    }
+  };
+
   const handleAddLog = (e: React.FormEvent) => {
     e.preventDefault();
     if (!userEmail || !activePlan || !exercise) return;
@@ -275,11 +298,9 @@ function JourneyContent() {
     const updatedLogs = [...savedLogs, newLog];
     localStorage.setItem(`${userEmail}_${activePlan}_exerciseLogs`, JSON.stringify(updatedLogs));
     setExerciseLogs(updatedLogs.filter((e: any) => new Date(e.date).toISOString().split('T')[0] === selectedDate));
-    setWeight(""); 
-    setReps("");
     setMinutes("");
     setSeconds("");
-    alert(`Logged: ${exercise}!`);
+    alert(`Logged set for ${exercise}! (Values kept for next set auto-fill)`);
   };
 
   const handleRemoveLog = (index: number) => {
@@ -726,22 +747,44 @@ function JourneyContent() {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Weight (optional)</label>
-                      <input type="number" value={weight} onChange={(e) => setWeight(e.target.value)} placeholder="Bodyweight" className="w-full bg-white border border-gray-100 rounded-2xl py-2.5 px-3 text-sm text-gray-900 focus:outline-none focus:border-blue-500" />
+                      <input type="number" step="any" value={weight} onChange={(e) => setWeight(e.target.value)} placeholder="Bodyweight" className="w-full bg-white border border-gray-100 rounded-2xl py-2.5 px-3 text-sm text-gray-900 focus:outline-none focus:border-blue-500" />
+                      <div className="flex gap-1 mt-1.5 flex-wrap">
+                        <button type="button" onClick={() => handleWeightModifier(-5)} className="text-[9px] font-extrabold bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-0.5 rounded-lg transition-colors cursor-pointer">-5kg</button>
+                        <button type="button" onClick={() => handleWeightModifier(-2.5)} className="text-[9px] font-extrabold bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-0.5 rounded-lg transition-colors cursor-pointer">-2.5kg</button>
+                        <button type="button" onClick={() => handleWeightModifier(2.5)} className="text-[9px] font-extrabold bg-blue-50 hover:bg-blue-100 text-blue-500 px-2 py-0.5 rounded-lg transition-colors cursor-pointer">+2.5kg</button>
+                        <button type="button" onClick={() => handleWeightModifier(5)} className="text-[9px] font-extrabold bg-blue-50 hover:bg-blue-100 text-blue-500 px-2 py-0.5 rounded-lg transition-colors cursor-pointer">+5kg</button>
+                      </div>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Reps</label>
                       <input type="number" value={reps} onChange={(e) => setReps(e.target.value)} placeholder="e.g. 15" required className="w-full bg-white border border-gray-100 rounded-2xl py-2.5 px-3 text-sm text-gray-900 focus:outline-none focus:border-blue-500" />
+                      <div className="flex gap-1 mt-1.5 flex-wrap">
+                        <button type="button" onClick={() => handleRepsModifier(-1)} className="text-[9px] font-extrabold bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-0.5 rounded-lg transition-colors cursor-pointer">-1</button>
+                        <button type="button" onClick={() => handleRepsModifier(1)} className="text-[9px] font-extrabold bg-blue-50 hover:bg-blue-100 text-blue-500 px-2 py-0.5 rounded-lg transition-colors cursor-pointer">+1</button>
+                        <button type="button" onClick={handleSameAsLast} className="text-[9px] font-extrabold bg-amber-50 hover:bg-amber-100 text-amber-600 px-2 py-0.5 rounded-lg transition-colors cursor-pointer">Last Set 🔁</button>
+                      </div>
                     </div>
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Weight (kg)</label>
-                      <input type="number" value={weight} onChange={(e) => setWeight(e.target.value)} placeholder="0" required className="w-full bg-white border border-gray-100 rounded-2xl py-2.5 px-3 text-sm text-gray-900 focus:outline-none focus:border-blue-500" />
+                      <input type="number" step="any" value={weight} onChange={(e) => setWeight(e.target.value)} placeholder="0" required className="w-full bg-white border border-gray-100 rounded-2xl py-2.5 px-3 text-sm text-gray-900 focus:outline-none focus:border-blue-500" />
+                      <div className="flex gap-1 mt-1.5 flex-wrap">
+                        <button type="button" onClick={() => handleWeightModifier(-5)} className="text-[9px] font-extrabold bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-0.5 rounded-lg transition-colors cursor-pointer">-5kg</button>
+                        <button type="button" onClick={() => handleWeightModifier(-2.5)} className="text-[9px] font-extrabold bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-0.5 rounded-lg transition-colors cursor-pointer">-2.5kg</button>
+                        <button type="button" onClick={() => handleWeightModifier(2.5)} className="text-[9px] font-extrabold bg-blue-50 hover:bg-blue-100 text-blue-500 px-2 py-0.5 rounded-lg transition-colors cursor-pointer">+2.5kg</button>
+                        <button type="button" onClick={() => handleWeightModifier(5)} className="text-[9px] font-extrabold bg-blue-50 hover:bg-blue-100 text-blue-500 px-2 py-0.5 rounded-lg transition-colors cursor-pointer">+5kg</button>
+                      </div>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Reps</label>
                       <input type="number" value={reps} onChange={(e) => setReps(e.target.value)} placeholder="0" required className="w-full bg-white border border-gray-100 rounded-2xl py-2.5 px-3 text-sm text-gray-900 focus:outline-none focus:border-blue-500" />
+                      <div className="flex gap-1 mt-1.5 flex-wrap">
+                        <button type="button" onClick={() => handleRepsModifier(-1)} className="text-[9px] font-extrabold bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-0.5 rounded-lg transition-colors cursor-pointer">-1</button>
+                        <button type="button" onClick={() => handleRepsModifier(1)} className="text-[9px] font-extrabold bg-blue-50 hover:bg-blue-100 text-blue-500 px-2 py-0.5 rounded-lg transition-colors cursor-pointer">+1</button>
+                        <button type="button" onClick={handleSameAsLast} className="text-[9px] font-extrabold bg-amber-50 hover:bg-amber-100 text-amber-600 px-2 py-0.5 rounded-lg transition-colors cursor-pointer">Last Set 🔁</button>
+                      </div>
                     </div>
                   </div>
                 )}

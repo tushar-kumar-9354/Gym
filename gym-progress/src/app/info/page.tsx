@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Scale, Ruler, Activity, Trash2, Save, User, Clock, Flame } from "lucide-react";
+import { Scale, Ruler, Activity, Save, User, Clock, Flame, Zap, Droplet, Heart, ChevronDown, ChevronUp, BookOpen } from "lucide-react";
 
 export default function YourMetrics() {
   const [weight, setWeight] = useState("");
@@ -12,6 +12,63 @@ export default function YourMetrics() {
   const [bmi, setBmi] = useState("0.0");
   const [bmiStatus, setBmiStatus] = useState("Unknown");
   const [userEmail, setUserEmail] = useState("");
+  const [showScience, setShowScience] = useState(false);
+
+  // Dynamic calculations on render
+  const weightNum = parseFloat(weight) || 0;
+  const heightNum = parseFloat(height) || 0;
+  const ageNum = parseInt(age) || 0;
+
+  // 1. Basal Metabolic Rate (BMR) - Revised Harris-Benedict
+  let bmr = 0;
+  if (weightNum && heightNum && ageNum) {
+    if (gender === "Male") {
+      bmr = 88.362 + (13.397 * weightNum) + (4.799 * heightNum) - (5.677 * ageNum);
+    } else {
+      bmr = 447.593 + (9.247 * weightNum) + (3.098 * heightNum) - (4.33 * ageNum);
+    }
+  }
+
+  // 2. Total Daily Energy Expenditure (TDEE)
+  let tdee = 0;
+  if (bmr) {
+    const multipliers: Record<string, number> = {
+      "sedentary": 1.2,
+      "light": 1.375,
+      "moderate": 1.55,
+      "active": 1.725,
+      "very active": 1.9
+    };
+    const key = activityLevel.toLowerCase();
+    const mult = multipliers[key] || 1.55;
+    tdee = bmr * mult;
+  }
+
+  // 3. Lean Body Mass (Boer Formula)
+  let lbm = 0;
+  if (weightNum && heightNum) {
+    if (gender === "Male") {
+      lbm = (0.407 * weightNum) + (0.267 * heightNum) - 19.2;
+    } else {
+      lbm = (0.252 * weightNum) + (0.473 * heightNum) - 48.3;
+    }
+    lbm = Math.min(weightNum, Math.max(0, lbm));
+  }
+
+  // 4. Body Fat Percentage Estimate
+  let bodyFat = 0;
+  if (weightNum && lbm) {
+    bodyFat = ((weightNum - lbm) / weightNum) * 100;
+  }
+
+  // 5. Ideal Daily Hydration Base
+  let idealWater = 0;
+  if (weightNum) {
+    idealWater = weightNum * 35;
+    if (activityLevel.toLowerCase() !== "sedentary") {
+      idealWater += 500;
+    }
+  }
 
   useEffect(() => {
     const email = localStorage.getItem("userEmail") || "";
@@ -106,6 +163,143 @@ export default function YourMetrics() {
             <p className="text-xl font-bold text-gray-900">{bmi}</p>
             <span className={`text-xs font-medium ${bmiStatus === 'Healthy' ? 'text-green-500' : 'text-blue-500'}`}>{bmiStatus}</span>
           </div>
+        </div>
+      </div>
+
+      {/* Scientific Performance Baselines Panel */}
+      <div className="max-w-4xl mx-auto bg-white p-6 rounded-xl border border-gray-100 shadow-sm space-y-6">
+        <div>
+          <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+            <Activity className="text-blue-500" /> Scientific Baselines & Body Composition
+          </h2>
+          <p className="text-sm text-gray-500 mt-0.5">
+            Real-time biometric analytics computed using peer-reviewed physiological models.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* BMR Card */}
+          <div className="bg-gradient-to-br from-orange-50 to-amber-50/30 p-4 rounded-xl border border-orange-100/50">
+            <div className="flex justify-between items-start mb-2">
+              <span className="text-xs font-semibold text-orange-700 uppercase tracking-wider">BMR (Metabolic Rate)</span>
+              <Flame size={16} className="text-orange-500" />
+            </div>
+            <div className="mt-1">
+              <span className="text-2xl font-black text-gray-900">
+                {bmr ? Math.round(bmr).toLocaleString() : "--"}
+              </span>
+              <span className="text-xs text-gray-500 font-bold ml-1">kcal/day</span>
+            </div>
+            <p className="text-[10px] text-orange-950/60 mt-2 font-medium leading-relaxed">
+              Energy expended at absolute rest in a temperate environment.
+            </p>
+          </div>
+
+          {/* TDEE Card */}
+          <div className="bg-gradient-to-br from-red-50 to-orange-50/30 p-4 rounded-xl border border-red-100/50">
+            <div className="flex justify-between items-start mb-2">
+              <span className="text-xs font-semibold text-red-700 uppercase tracking-wider">TDEE (Daily Needs)</span>
+              <Zap size={16} className="text-red-500" />
+            </div>
+            <div className="mt-1">
+              <span className="text-2xl font-black text-gray-900">
+                {tdee ? Math.round(tdee).toLocaleString() : "--"}
+              </span>
+              <span className="text-xs text-gray-500 font-bold ml-1">kcal/day</span>
+            </div>
+            <p className="text-[10px] text-red-950/60 mt-2 font-medium leading-relaxed">
+              Total energy required to maintain weight based on activity multiplier.
+            </p>
+          </div>
+
+          {/* LBM Card */}
+          <div className="bg-gradient-to-br from-emerald-50 to-teal-50/30 p-4 rounded-xl border border-emerald-100/50">
+            <div className="flex justify-between items-start mb-2">
+              <span className="text-xs font-semibold text-emerald-700 uppercase tracking-wider">Lean Body Mass</span>
+              <Heart size={16} className="text-emerald-500" />
+            </div>
+            <div className="mt-1">
+              <span className="text-2xl font-black text-gray-900">
+                {lbm ? lbm.toFixed(1) : "--"}
+              </span>
+              <span className="text-xs text-gray-500 font-bold ml-1">kg</span>
+            </div>
+            <p className="text-[10px] text-emerald-950/60 mt-2 font-medium leading-relaxed">
+              Total weight of skeleton, muscles, organs, and water (excl. body fat).
+            </p>
+          </div>
+
+          {/* Body Fat Card */}
+          <div className="bg-gradient-to-br from-blue-50 to-sky-50/30 p-4 rounded-xl border border-blue-100/50">
+            <div className="flex justify-between items-start mb-2">
+              <span className="text-xs font-semibold text-blue-700 uppercase tracking-wider">Est. Body Fat %</span>
+              <Scale size={16} className="text-blue-500" />
+            </div>
+            <div className="mt-1">
+              <span className="text-2xl font-black text-gray-900">
+                {bodyFat ? `${bodyFat.toFixed(1)}%` : "--"}
+              </span>
+            </div>
+            <p className="text-[10px] text-blue-950/60 mt-2 font-medium leading-relaxed">
+              Estimated body fat percentage based on Boer Lean Mass model.
+            </p>
+          </div>
+        </div>
+
+        {/* Ideal Hydration Row */}
+        {idealWater > 0 && (
+          <div className="bg-sky-50/50 p-4 rounded-xl border border-sky-100/50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+            <div className="flex items-center gap-3">
+              <div className="bg-blue-500 text-white p-2 rounded-lg">
+                <Droplet size={18} className="animate-pulse" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-gray-950">Recommended Baseline Hydration</h4>
+                <p className="text-[10px] text-gray-500">Calculated using physiological guidelines + activity bonuses</p>
+              </div>
+            </div>
+            <div className="text-left sm:text-right shrink-0">
+              <span className="text-xl font-black text-blue-600">
+                {Math.round(idealWater).toLocaleString()}
+              </span>
+              <span className="text-xs text-blue-600 font-bold ml-1">ml / day</span>
+            </div>
+          </div>
+        )}
+
+        {/* Peer-Reviewed Formulas Reference Accordion */}
+        <div className="border-t border-gray-100 pt-4">
+          <button
+            type="button"
+            onClick={() => setShowScience(!showScience)}
+            className="flex items-center justify-between w-full text-xs font-semibold text-gray-500 hover:text-blue-600 transition-colors cursor-pointer"
+          >
+            <span className="flex items-center gap-1.5"><BookOpen size={14} /> Peer-Reviewed Physiology Reference Equations</span>
+            {showScience ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
+
+          {showScience && (
+            <div className="mt-3 bg-gray-50 p-4 rounded-xl border border-gray-200/50 text-[10px] text-gray-600 space-y-3 font-mono leading-relaxed">
+              <div>
+                <span className="font-bold text-gray-800">1. Basal Metabolic Rate (BMR) - Revised Harris-Benedict:</span>
+                <p className="pl-3 mt-1">Male: BMR = 88.362 + (13.397 * Weight_kg) + (4.799 * Height_cm) - (5.677 * Age_years)</p>
+                <p className="pl-3">Female: BMR = 447.593 + (9.247 * Weight_kg) + (3.098 * Height_cm) - (4.330 * Age_years)</p>
+              </div>
+              <div>
+                <span className="font-bold text-gray-800">2. Lean Body Mass (LBM) - Boer Formula:</span>
+                <p className="pl-3 mt-1">Male: LBM = (0.407 * Weight_kg) + (0.267 * Height_cm) - 19.2</p>
+                <p className="pl-3">Female: LBM = (0.252 * Weight_kg) + (0.473 * Height_cm) - 48.3</p>
+              </div>
+              <div>
+                <span className="font-bold text-gray-800">3. Body Fat Estimate (%):</span>
+                <p className="pl-3 mt-1">BF% = ((Weight - LBM) / Weight) * 100</p>
+              </div>
+              <div>
+                <span className="font-bold text-gray-800">4. Total Daily Energy Expenditure (TDEE):</span>
+                <p className="pl-3 mt-1">TDEE = BMR * Multiplier (Sedentary: 1.2, Light: 1.375, Moderate: 1.55, Active: 1.725, Very Active: 1.9)</p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

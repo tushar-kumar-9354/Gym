@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Activity, Dumbbell, Utensils, Target, FileBarChart, LogOut } from "lucide-react";
+import { Activity, Dumbbell, Utensils, Target, FileBarChart, LogOut, Calendar } from "lucide-react";
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -11,18 +11,19 @@ export default function Sidebar() {
 
   const navItems = [
     { name: "Dashboard", href: "/", icon: Activity },
+    { name: "Journey", href: "/journey", icon: Calendar },
     { name: "Diet Log", href: "/diet", icon: Utensils },
-    { name: "Strength Log", href: "/strength", icon: Dumbbell },
-    { name: "Goals & Body", href: "/goals", icon: Target },
+    { name: "Workout Logs", href: "/visualise", icon: Dumbbell },
+    { name: "Your Metrics", href: "/info", icon: Target },
     { name: "Reports", href: "/reports", icon: FileBarChart },
   ];
 
   return (
     <div className="hidden md:flex flex-col w-64 glass-panel border-r border-[var(--color-border)] h-screen fixed left-0 top-0">
       <div className="p-6">
-        <h1 className="text-2xl font-bold text-gradient flex items-center gap-2">
-          <Activity className="text-primary-500" />
-          GymProgress+
+        <h1 className="text-xl font-black text-gradient flex items-center gap-2 group">
+          <Dumbbell className="text-primary-500 group-hover:rotate-12 transition-transform duration-300" size={22} />
+          GymProgress+ <span className="bg-amber-400 text-amber-950 font-black text-[9px] px-1.5 py-0.5 rounded-md uppercase tracking-widest shrink-0">Iron</span>
         </h1>
       </div>
       

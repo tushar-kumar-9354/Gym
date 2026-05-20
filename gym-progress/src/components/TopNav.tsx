@@ -43,9 +43,11 @@ export default function TopNav() {
       <div className="w-full px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           <div className="flex items-center">
-            <Link href="/" className="flex items-center gap-2">
-              <Activity className="text-blue-500" size={24} />
-              <span className="text-xl font-bold text-blue-500">GymProgress+</span>
+            <Link href="/" className="flex items-center gap-2 group">
+              <Dumbbell className="text-blue-500 group-hover:rotate-12 transition-transform duration-300" size={24} />
+              <span className="text-xl font-black text-blue-600 tracking-tight flex items-center gap-1.5">
+                GymProgress+ <span className="bg-amber-400 text-amber-950 font-black text-[9px] px-1.5 py-0.5 rounded-md uppercase tracking-widest shrink-0">Iron</span>
+              </span>
             </Link>
           </div>
           

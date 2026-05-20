@@ -107,7 +107,7 @@ export default function DailyRoutine() {
       const todayObj = new Date();
       const diffSinceLastMs = Math.abs(todayObj.getTime() - lastWeighInDate.getTime());
       // Test mode: use a short interval (10 seconds) instead of 7 days for rapid testing
-      const TEST_MODE = true; // Set to false in production
+      const TEST_MODE = false; // Set to false in production
       const intervalMs = TEST_MODE ? 10 * 1000 : 7 * 24 * 60 * 60 * 1000; // 10 seconds or 7 days
 
       const storedProfile = localStorage.getItem(`${email}_userProfile`);

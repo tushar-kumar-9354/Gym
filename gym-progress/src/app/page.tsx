@@ -9,7 +9,7 @@ import GoalChart from "@/components/charts/GoalChart";
 import { getExerciseTrackingType, formatExerciseValue } from "@/utils/oneRM";
 
 export default function Dashboard() {
-  const TEST_MODE = true; // set to true for rapid testing
+  const TEST_MODE = false; // set to true for rapid testing
   const [activePlan, setActivePlan] = useState<string | null>(null);
   const [userName, setUserName] = useState("User");
   const [userEmail, setUserEmail] = useState("");
@@ -689,20 +689,54 @@ export default function Dashboard() {
 
           {/* Deep Overall Progress Card (Daily Score) */}
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-50 w-full">
-            <div className="flex justify-between items-center mb-4">
-              <div>
-                <h2 className="text-xl font-bold text-gray-900">Algorithmic Progress Depth</h2>
-                <p className={`text-sm font-medium flex items-center gap-1 mt-1 ${statusColor}`}>
-                  <AlertCircle size={14} /> {progressStatus}
+            <div className="flex flex-col sm:flex-row justify-between items-center gap-6">
+              <div className="space-y-3 flex-1 text-center sm:text-left">
+                <div>
+                  <span className="bg-blue-50 text-blue-600 font-extrabold text-[10px] px-2.5 py-1 rounded-full uppercase tracking-wider">Algorithmic Performance Tracker</span>
+                  <h2 className="text-2xl font-black text-gray-950 mt-1.5 leading-tight">Algorithmic Progress Depth</h2>
+                  <p className={`text-xs font-semibold flex items-center justify-center sm:justify-start gap-1 mt-2.5 bg-gray-50 p-2.5 rounded-2xl border border-gray-100 ${statusColor}`}>
+                    <AlertCircle size={15} /> {progressStatus}
+                  </p>
+                </div>
+                <p className="text-xs text-gray-500 leading-normal max-w-md">
+                  Your score aggregates sleep, nutrition balance, workout consistency, and hydration. Log metrics to unlock maximum rating!
                 </p>
               </div>
-              <div className="text-right">
-                <span className="text-3xl font-extrabold text-blue-500">{overallProgress}%</span>
-                <p className="text-xs text-gray-500 mt-1">Overall Daily Score</p>
+
+              {/* Premium Dynamic Score Ring */}
+              <div className="relative flex flex-col items-center justify-center shrink-0 w-32 h-32 bg-gray-50/50 rounded-full border border-gray-100/50 p-1">
+                <svg className="w-full h-full transform -rotate-90">
+                  {/* Track circle */}
+                  <circle
+                    cx="64"
+                    cy="64"
+                    r="52"
+                    stroke="#e2e8f0"
+                    strokeWidth="8"
+                    fill="transparent"
+                  />
+                  {/* Colored progress circle */}
+                  <circle
+                    cx="64"
+                    cy="64"
+                    r="52"
+                    stroke={overallProgress >= 80 ? "#10b981" : overallProgress >= 50 ? "#f59e0b" : "#f43f5e"}
+                    strokeWidth="8"
+                    strokeDasharray={2 * Math.PI * 52}
+                    strokeDashoffset={2 * Math.PI * 52 - (overallProgress / 100) * 2 * Math.PI * 52}
+                    strokeLinecap="round"
+                    fill="transparent"
+                    className="transition-all duration-500 ease-out"
+                  />
+                </svg>
+                <div className="absolute flex flex-col items-center justify-center">
+                  <span className="text-3xl font-black text-gray-950 leading-none">
+                    {overallProgress}%
+                  </span>
+                  <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest mt-1">Score</span>
+                </div>
               </div>
             </div>
-
-            <ProgressBar label="" progress={overallProgress} colorClass="bg-gradient-to-r from-blue-400 to-blue-600" showText={false} />
 
             <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mt-6 border-t border-gray-50 pt-4">
               <div className="text-center">
