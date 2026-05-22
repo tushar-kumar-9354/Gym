@@ -173,6 +173,13 @@ function DietContent() {
     carbs: acc.carbs + meal.carbs,
   }), { calories: 0, protein: 0, fat: 0, carbs: 0 });
 
+  const formatMacroValue = (value: number) => {
+    const formatted = value.toFixed(2);
+    if (formatted.endsWith(".00")) return `${parseInt(formatted, 10)}.0`;
+    if (formatted.endsWith("0")) return formatted.slice(0, -1);
+    return formatted;
+  };
+
   return (
     <div className="space-y-6 p-6 bg-white min-h-screen">
       <header className="flex justify-between items-center">
@@ -220,7 +227,7 @@ function DietContent() {
               <h2 className="text-xl font-semibold text-gray-900 mb-4">Daily Summary</h2>
               <div className="space-y-4">
                 <ProgressBar label={`Calories (${current.calories} / ${targets.calories})`} progress={(current.calories / targets.calories) * 100} colorClass="bg-blue-500" />
-                <ProgressBar label={`Protein (${current.protein}g / ${targets.protein}g)`} progress={(current.protein / targets.protein) * 100} colorClass="bg-blue-400" />
+                <ProgressBar label={`Protein (${formatMacroValue(current.protein)}g / ${targets.protein}g)`} progress={(current.protein / targets.protein) * 100} colorClass="bg-blue-400" />
               </div>
             </div>
 
@@ -249,7 +256,7 @@ function DietContent() {
                     <div>
                       <p className="font-medium text-gray-900">{food.name}</p>
                       <p className="text-xs text-gray-500">
-                        {food.calories} kcal • P: {food.protein}g • F: {food.fat}g • C: {food.carbs}g
+                        {food.calories} kcal • P: {formatMacroValue(food.protein)}g • F: {formatMacroValue(food.fat)}g • C: {food.carbs}g
                       </p>
                     </div>
                     <button onClick={() => handleLogMeal(food)} className="text-blue-500 hover:text-blue-600 font-medium text-sm flex items-center gap-1">
@@ -263,7 +270,7 @@ function DietContent() {
 
           {/* Logged Meals List */}
           <div className="lg:col-span-2 bg-white p-6 rounded-xl border border-gray-100 shadow-sm h-fit">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Logged Meals for {new Date(date).toLocaleDateString()}</h2>
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">Logged Meals for {new Date(date).toLocaleDateString('en-US')}</h2>
             {loggedMeals.length === 0 ? (
               <p className="text-gray-500 text-center py-8">No meals logged for this day.</p>
             ) : (
@@ -273,7 +280,7 @@ function DietContent() {
                     <div>
                       <h3 className="font-semibold text-gray-900">{meal.name}</h3>
                       <p className="text-xs text-gray-500">
-                        {meal.calories} kcal • P: {meal.protein}g • F: {meal.fat}g • C: {meal.carbs}g
+                        {meal.calories} kcal • P: {formatMacroValue(meal.protein)}g • F: {formatMacroValue(meal.fat)}g • C: {meal.carbs}g
                       </p>
                     </div>
                     <button 

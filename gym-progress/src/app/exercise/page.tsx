@@ -187,7 +187,7 @@ function ExerciseContent() {
 
   // Filter logs for chart
   const chartLogs = logs.filter(l => l.exercise === exercise);
-  const dates = chartLogs.map(l => new Date(l.date).toLocaleDateString());
+  const dates = chartLogs.map(l => new Date(l.date).toLocaleDateString('en-US'));
   const oneRMs = chartLogs.map(l => l.oneRM);
 
   return (
@@ -388,7 +388,7 @@ function ExerciseContent() {
                   groupedLogs.map((group) => {
                     const today = new Date().toISOString().split('T')[0];
                     const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-                    const dateLabel = group.date === today ? "Today" : group.date === yesterday ? "Yesterday" : new Date(group.date).toLocaleDateString();
+                    const dateLabel = group.date === today ? "Today" : group.date === yesterday ? "Yesterday" : new Date(group.date).toLocaleDateString('en-US');
 
                     return (
                       <div key={group.key} className="bg-gray-50 rounded-xl p-4 border border-gray-100">

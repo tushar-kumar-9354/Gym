@@ -116,7 +116,7 @@ export default function Visualise() {
   const waterTarget = Math.round(currentWeight * 35); // 35ml per kg
 
   // 1. Process Weight Data (with Target Baseline)
-  const weightDates = weeklyWeights.map(w => new Date(w.date).toLocaleDateString());
+  const weightDates = weeklyWeights.map(w => new Date(w.date).toLocaleDateString('en-US'));
   const weightValues = weeklyWeights.map(w => w.weight);
 
   const weightData = {
@@ -338,7 +338,7 @@ export default function Visualise() {
 
   // 7. NEW: Strength Trajectory (Inline implementation for full control)
   const filteredLogs = exerciseLogs.filter(log => log.exercise === selectedExercise);
-  const strengthDates = filteredLogs.map(log => new Date(log.date).toLocaleDateString());
+  const strengthDates = filteredLogs.map(log => new Date(log.date).toLocaleDateString('en-US'));
   const strengthValues = filteredLogs.map(log => log.oneRM);
 
   const trackingType = getExerciseTrackingType(selectedExercise, selectedBodyPart);

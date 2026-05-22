@@ -77,6 +77,8 @@ export default function FoodChart() {
     }
   };
 
+  const formatMacroValue = (value: number) => Number(value || 0).toFixed(1);
+
   const getNutrientValue = (food: any, name: string) => {
     const nutrient = food.foodNutrients?.find((n: any) => n.nutrientName.toLowerCase().includes(name.toLowerCase()));
     return nutrient ? Math.round(nutrient.value) : 0;
@@ -223,9 +225,9 @@ export default function FoodChart() {
                   <tr key={index} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
                     <td className="py-3 font-medium text-gray-900">{food.name}</td>
                     <td className="py-3">{food.calories} kcal</td>
-                    <td className="py-3">{food.protein}g</td>
-                    <td className="py-3">{food.fat}g</td>
-                    <td className="py-3">{food.carbs}g</td>
+                    <td className="py-3">{formatMacroValue(food.protein)}g</td>
+                    <td className="py-3">{formatMacroValue(food.fat)}g</td>
+                    <td className="py-3">{formatMacroValue(food.carbs)}g</td>
                     <td className="py-3">
                       <button 
                         onClick={() => handleLogMeal(food)}

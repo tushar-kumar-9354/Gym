@@ -43,6 +43,7 @@ ChartJS.register(
 export default function CompletedPlan() {
   const [userEmail, setUserEmail] = useState("");
   const [planName, setPlanName] = useState("");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [planData, setPlanData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [aiStory, setAiStory] = useState("");
@@ -50,17 +51,21 @@ export default function CompletedPlan() {
 
   useEffect(() => {
     const email = localStorage.getItem("userEmail") || "";
-    setUserEmail(email);
     if (!email) {
-      setLoading(false);
+      Promise.resolve().then(() => {
+        setUserEmail("");
+        setLoading(false);
+      });
       return;
     }
 
     const active = localStorage.getItem(`${email}_activePlan`) || "";
-    setPlanName(active);
-
     if (!active) {
-      setLoading(false);
+      Promise.resolve().then(() => {
+        setUserEmail(email);
+        setPlanName("");
+        setLoading(false);
+      });
       return;
     }
 
@@ -157,14 +162,16 @@ export default function CompletedPlan() {
       success: Math.abs(currentWeight - goalWeight) <= 2.5
     };
 
-    setPlanData(report);
-    setLoading(false);
-
-    // Trigger AI story generation
-    generateAIJourneyStory(report);
+    Promise.resolve().then(() => {
+      setUserEmail(email);
+      setPlanName(active);
+      setPlanData(report);
+      setLoading(false);
+      generateAIJourneyStory(report);
+    });
   }, []);
 
-  const generateAIJourneyStory = async (report: any) => {
+  async function generateAIJourneyStory(report: any) {
     setLoadingAi(true);
     try {
       const res = await fetch("/api/gemini/analyze-routine", {
@@ -203,7 +210,7 @@ export default function CompletedPlan() {
     } finally {
       setLoadingAi(false);
     }
-  };
+  }
 
   if (loading) {
     return (

@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
-import { Activity, Mail, ArrowRight, ShieldCheck, User, Lock, Sparkles } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Activity, Mail, ArrowRight, ShieldCheck, User, Lock, Sparkles, AlertCircle } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 
 interface RegisteredUser {
   name: string;
@@ -10,7 +11,20 @@ interface RegisteredUser {
 }
 
 export default function Login() {
+  const searchParams = useSearchParams();
+  const reason = searchParams.get("reason");
+
   const [isSignUp, setIsSignUp] = useState(false); // Mode toggle: false = Login, true = SignUp
+  const [showResetBanner, setShowResetBanner] = useState(false);
+
+  // Show banner if redirected after reset or delete
+  useEffect(() => {
+    if (reason === "reset" || reason === "deleted") {
+      setShowResetBanner(true);
+    }
+  }, [reason]);
+
+  //SignUp State
   
   // SignUp State
   const [signUpName, setSignUpName] = useState("");
@@ -34,23 +48,8 @@ export default function Login() {
     const emailKey = signUpEmail.toLowerCase().trim();
     const nameKey = signUpName.trim();
 
-    // Check localStorage registeredUsers
-    const registeredUsers = JSON.parse(localStorage.getItem("registeredUsers") || "{}");
-    
-    // Check if email already registered
-    const emailExists = !!registeredUsers[emailKey];
-    // Check if username already registered
-    const usernameExists = Object.values(registeredUsers).some(
-      (u: any) => typeof u === "object" && u.name?.toLowerCase() === nameKey.toLowerCase()
-    );
-
-    if (emailExists) {
-      alert("This email is already registered. Please log in.");
-      return;
-    }
-
-    if (usernameExists) {
-      alert("This username is already taken. Please choose another one.");
+    if (!nameKey || !emailKey || !signUpPassword) {
+      alert("Please complete all fields before requesting the OTP.");
       return;
     }
 
@@ -80,38 +79,42 @@ export default function Login() {
   // Sign Up: Step 2 - Verify OTP & Save Registration
   const handleSignUpVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!otp || !signUpEmail) return;
+    if (!otp || !signUpEmail || !signUpPassword || !signUpName) return;
 
     setLoading(true);
     try {
-      const res = await fetch("/api/auth/send-otp", {
+      const verify = await fetch("/api/auth/send-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "verify", email: signUpEmail.toLowerCase().trim(), otp }),
       });
-      const data = await res.json();
-      
-      if (data.success) {
-        const emailKey = signUpEmail.toLowerCase().trim();
-        const registeredUsers = JSON.parse(localStorage.getItem("registeredUsers") || "{}");
-        
-        // Save user registry details: { name, email, password }
-        registeredUsers[emailKey] = {
-          name: signUpName.trim(),
-          email: emailKey,
-          password: signUpPassword,
-        };
-        localStorage.setItem("registeredUsers", JSON.stringify(registeredUsers));
+      const verifyData = await verify.json();
 
-        // Save active session
-        localStorage.setItem("userName", signUpName.trim());
-        localStorage.setItem("userEmail", emailKey);
-        localStorage.setItem("isLoggedIn", "true");
-        
-        window.location.href = "/";
-      } else {
-        alert(data.error || "Invalid OTP");
+      if (!verifyData.success) {
+        alert(verifyData.error || "Invalid OTP");
+        return;
       }
+
+      const register = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: signUpName.trim(),
+          email: signUpEmail.toLowerCase().trim(),
+          password: signUpPassword,
+        }),
+      });
+      const registerData = await register.json();
+
+      if (!registerData.ok) {
+        alert(registerData.error || "Unable to register account");
+        return;
+      }
+
+      localStorage.setItem("userName", signUpName.trim());
+      localStorage.setItem("userEmail", signUpEmail.toLowerCase().trim());
+      localStorage.setItem("isLoggedIn", "true");
+      window.location.href = "/";
     } catch (error) {
       console.error("Error verifying OTP:", error);
       alert("An error occurred during verification.");
@@ -121,51 +124,34 @@ export default function Login() {
   };
 
   // Login: Verify Credentials Directly
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!loginIdentifier || !loginPassword) return;
 
-    const identifier = loginIdentifier.toLowerCase().trim();
-    const registeredUsers = JSON.parse(localStorage.getItem("registeredUsers") || "{}");
-
-    // Try to find user matching email key, or username inside values
-    let matchedUser: RegisteredUser | null = null;
-
-    if (registeredUsers[identifier]) {
-      const user = registeredUsers[identifier];
-      if (typeof user === "object") {
-        matchedUser = user;
-      } else {
-        // Fallback for old simple format (which just stored name string)
-        matchedUser = { name: user, email: identifier, password: "" };
+    setLoading(true);
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identifier: loginIdentifier, password: loginPassword }),
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        alert(data.error || "Login failed");
+        return;
       }
-    } else {
-      // Find by username
-      const found = Object.values(registeredUsers).find(
-        (u: any) => typeof u === "object" && u.name?.toLowerCase() === identifier
-      );
-      if (found) {
-        matchedUser = found as RegisteredUser;
-      }
+
+      localStorage.setItem("userName", data.user.name);
+      localStorage.setItem("userEmail", data.user.email);
+      localStorage.setItem("isLoggedIn", "true");
+      localStorage.setItem("userRole", data.user.role);
+      window.location.href = "/";
+    } catch (error) {
+      console.error("Login error:", error);
+      alert("An error occurred while logging in.");
+    } finally {
+      setLoading(false);
     }
-
-    if (!matchedUser) {
-      alert("No user registered with this Username or Email. Please Sign Up.");
-      return;
-    }
-
-    // Verify Password (if user has one set, otherwise allow login if registering without password previously)
-    if (matchedUser.password && matchedUser.password !== loginPassword) {
-      alert("Incorrect password. Please try again.");
-      return;
-    }
-
-    // Start session
-    localStorage.setItem("userName", matchedUser.name);
-    localStorage.setItem("userEmail", matchedUser.email);
-    localStorage.setItem("isLoggedIn", "true");
-
-    window.location.href = "/";
   };
 
   const toggleMode = () => {

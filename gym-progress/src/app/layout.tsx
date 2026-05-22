@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import TopNav from "@/components/TopNav";
 import MainWrapper from "@/components/MainWrapper";
+import AccountLockGuard from "@/components/AccountLockGuard";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -18,11 +19,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${inter.className} bg-[var(--background)] text-[var(--foreground)] min-h-screen flex flex-col antialiased`}>
-        <TopNav />
-        <MainWrapper>
-          {children}
-        </MainWrapper>
+      <body className={`${inter.className} bg-(--background) text-(--foreground) min-h-screen flex flex-col antialiased`}>
+        <AccountLockGuard>
+          <TopNav />
+          <MainWrapper>
+            {children}
+          </MainWrapper>
+        </AccountLockGuard>
       </body>
     </html>
   );

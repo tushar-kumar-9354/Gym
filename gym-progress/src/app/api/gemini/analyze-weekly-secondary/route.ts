@@ -1,3 +1,4 @@
+// src/app/api/gemini/analyze-weekly-secondary/route.ts
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -5,7 +6,7 @@ import { z } from "zod";
 // @ts-ignore
 const weeklyAiCache = new Map<string, { timestamp: number; data: any }>();
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
-// ------------------------------------------
+// ------------------------------------
 
 // --- END-TO-END VALIDATION SCHEMA ---
 const weeklyRequestSchema = z.object({
@@ -20,13 +21,14 @@ const weeklyRequestSchema = z.object({
   goal: z.string().optional(),
   activityLevel: z.string().optional(),
   currentWeight: z.number().min(30).max(300).optional(),
-// @ts-ignore
+  // @ts-ignore
   dailyReports: z.array(z.any()).optional(),
   userProfile: z.record(z.string(), z.any()).optional(),
-// @ts-ignore
+  // @ts-ignore
   frequentFoods: z.array(z.any()).optional(),
 });
 // ------------------------------------
+
 const SYSTEM_PROMPT = `You are an elite AI personal trainer and sports scientist.
 Given the user's weight targets, active plan parameters, their daily logged reports for the past week, and their current daily routine, perform a comprehensive weekly performance review.
 
@@ -45,7 +47,8 @@ STRICT RULES:
     "waterGuidance": "string"
   }
 }
-3. New Routine timetable must have 8-10 items, respecting their preferred gym timing, wake timing, sleep timing, and food preferences, and including specific nutrition percentage contribution explainers for every meal.`;
+3. New Routine timetable must have 8-10 items, respecting their preferred gym timing, wake timing, sleep timing, and food preferences, and including specific nutrition percentage contribution explainers for every meal.
+`;
 
 function buildUserPrompt(body: any): string {
   const {
@@ -66,63 +69,35 @@ function buildUserPrompt(body: any): string {
   } = body;
 
   const reportsSummary = dailyReports.map((r: any) => {
-    return `- Date: ${r.date}, Daily Score: ${r.score}%, Calories: ${r.calories} kcal, Protein: ${r.protein}g, Fats: ${r.fat}g, Water: ${r.water}ml, Sleep: ${r.sleepHours} hrs, Exercises: ${JSON.stringify(r.exercises)}`;
+    return `- Date: ${r.date}, Score: ${r.score}%, Calories: ${r.calories}kcal, Protein: ${r.protein}g, Fats: ${r.fat}g, Water: ${r.water}ml, Sleep: ${r.sleepHours || "N/A"}h, Exercises: ${r.exercises?.length || 0}`;
   }).join("\n");
 
-  const foodsSummary = frequentFoods.map((f: any) => `${f.name} (${f.calories} kcal, ${f.protein}g protein)`).join(", ");
+  const foodsSummary = frequentFoods.map((f: any) => `${f.name} (${f.calories}kcal, ${f.protein}g protein)`).join(", ");
 
-  return `Here is the user's fitness plan details:
-- Plan Name: ${activePlanName}
-- Goal Path: ${startWeight} kg → ${goalWeight} kg (${goal})
-- Current Body Weight: ${currentWeight} kg
-- Plan Duration: ${planDuration} months
-- Daily Target Baselines: ${targetCalories} kcal, ${targetProtein}g Protein, ${targetFats}g Fats, ${targetHydration}ml Hydration
-- Activity Level: ${activityLevel}
-
-User Profile Preferences:
-- Dietary Preference: ${userProfile.dietPreference || "Flexible"}
-- Workout/Gym Timing: ${userProfile.gymTiming || "Not specified"}
-- Average Wake-Up Time: ${userProfile.wakeTime || "06:30 AM"}
-- Average Bedtime: ${userProfile.sleepTime || "10:30 PM"}
-- Injuries or Context: ${userProfile.injuries || "None"}
-- Medical or Climate Context: ${userProfile.medicalContext || "None"}
-
-Historical Most Consumed Foods:
-[ ${foodsSummary} ]
-
-Daily Reports logs over the past week:
-${reportsSummary || "No reports logged yet for this week."}
-
-Based on this data:
-1. Provide a beautiful AI weekly performance report paragraph.
-2. Outline specific timetable recommendation shifts.
-3. Construct a newly optimized, highly accurate daily routine timetable in 'newRoutine' respecting the user's Preferred gym timing (${userProfile.gymTiming || "06:00 PM"}) and sleeping constraints.`;
+  return `Here is the user's fitness plan details:\n- Plan Name: ${activePlanName}\n- Goal Path: ${startWeight}kg → ${goalWeight}kg (${goal})\n- Current Body Weight: ${currentWeight || startWeight}kg\n- Plan Duration: ${planDuration} months\n- Daily Target Baselines: ${targetCalories}kcal, ${targetProtein}g Protein, ${targetFats}g Fats, ${targetHydration}ml Hydration\n- Activity Level: ${activityLevel}\n\nUser Profile Preferences:\n- Dietary Preference: ${userProfile.dietPreference || "Flexible"}\n- Workout/Gym Timing: ${userProfile.gymTiming || "Not specified"}\n- Wake Time: ${userProfile.wakeTime || "06:30 AM"}\n- Bedtime: ${userProfile.sleepTime || "10:30 PM"}\n- Injuries/Context: ${userProfile.injuries || "None"}\n\nHistorical Most Consumed Foods:\n[ ${foodsSummary} ]\n\nWeekly Daily Reports:\n${reportsSummary || "No reports logged yet for this week."}\n\nBased on this data, provide the weekly performance review, actionable routine recommendation, and a new optimized daily routine JSON as described in the system prompt.`;
 }
 
 export async function POST(request: Request) {
   try {
     const rawBody = await request.json();
-    
-    // Secure End-to-End Payload Validation
     const parsed = weeklyRequestSchema.safeParse(rawBody);
     if (!parsed.success) {
       return NextResponse.json({ error: "Invalid request payload", details: parsed.error.issues }, { status: 400 });
     }
     const body = parsed.data;
 
-    // Fast Cache Check
     const cacheKey = JSON.stringify(body);
     const cached = weeklyAiCache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
-      console.log("Serving weekly AI analysis from edge cache!");
+      console.log("Serving weekly AI analysis from secondary cache!");
       return NextResponse.json(cached.data);
     }
 
     const userPrompt = buildUserPrompt(body);
 
-    const apiKey = process.env.GROQ_API_KEY;
+    const apiKey = process.env.GROQ_API_KEY_2;
     if (!apiKey) {
-      return NextResponse.json({ error: "Groq API key is not configured" }, { status: 500 });
+      return NextResponse.json({ error: "Secondary Groq API key (GROQ_API_KEY_2) is not configured" }, { status: 500 });
     }
 
     const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -136,39 +111,32 @@ export async function POST(request: Request) {
         temperature: 0.3,
         max_tokens: 1200,
         response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: userPrompt },
-        ],
+        messages: [{ role: "system", content: SYSTEM_PROMPT }, { role: "user", content: userPrompt }],
       }),
     });
 
     if (!response.ok) {
       const errText = await response.text();
-      console.error("Groq API error (weekly):", errText);
-      return NextResponse.json({ error: "Failed to query Groq API for weekly analysis" }, { status: response.status });
+      console.error("Groq API error (secondary weekly):", errText);
+      return NextResponse.json({ error: "Failed to query Groq API" }, { status: response.status });
     }
 
     const data = await response.json();
     const responseText = data.choices?.[0]?.message?.content;
-
     if (!responseText) {
       return NextResponse.json({ error: "Empty response from Groq API" }, { status: 500 });
     }
 
     try {
       const parsedData = JSON.parse(responseText.trim());
-      
-      // Save to Cache
       weeklyAiCache.set(cacheKey, { timestamp: Date.now(), data: parsedData });
-      
       return NextResponse.json(parsedData);
     } catch (parseError: any) {
-      console.error("Failed to parse weekly Groq JSON:", parseError);
+      console.error("Failed to parse secondary weekly Groq JSON:", parseError);
       return NextResponse.json({ error: "Malformed JSON from Groq", raw: responseText }, { status: 500 });
     }
   } catch (error: any) {
-    console.error("Error in analyze-weekly route:", error);
+    console.error("Error in secondary analyze-weekly route:", error);
     return NextResponse.json({ error: error?.message || "Internal server error" }, { status: 500 });
   }
 }

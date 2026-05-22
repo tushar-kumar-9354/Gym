@@ -1,12 +1,13 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { proteinTarget, Goal } from "@/lib/protein";
 import ProgressBar from "@/components/ProgressBar";
 import { Flame, Plus, Target, ChevronDown, Scale, AlertCircle, TrendingUp, BarChart2, Coffee, Dumbbell, Droplets, ArrowRight, Moon, Trophy, Sparkles } from "lucide-react";
 import Link from "next/link";
 import StrengthChart from "@/components/charts/StrengthChart";
 import GoalChart from "@/components/charts/GoalChart";
-import { getExerciseTrackingType, formatExerciseValue } from "@/utils/oneRM";
+import { getExerciseTrackingType, formatExerciseValue, formatMacroValue, roundToOneDecimal } from "@/utils/oneRM";
 
 export default function Dashboard() {
   const TEST_MODE = false; // set to true for rapid testing
@@ -24,9 +25,14 @@ export default function Dashboard() {
   const [savedPlans, setSavedPlans] = useState<any[]>([]);
   const [weeklyWeights, setWeeklyWeights] = useState<{ date: string, weight: number }[]>([]);
   const [loggedWater, setLoggedWater] = useState(0); // in ml
+  const [lastWaterAmount, setLastWaterAmount] = useState<number | null>(null);
   const [sleepLogs, setSleepLogs] = useState<{ [key: string]: { hours: number; quality: string } }>({});
   const [sleepTarget, setSleepTarget] = useState(8);
+  const [showHistoryPanel, setShowHistoryPanel] = useState(false);
+  const [dateRange, setDateRange] = useState<'7days' | 'all'>('7days');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [customTargets, setCustomTargets] = useState<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [aiRecommendation, setAiRecommendation] = useState<any>(null);
   const [showRecommendationDetails, setShowRecommendationDetails] = useState(false);
   const [loadingRecommendation, setLoadingRecommendation] = useState(false);
@@ -55,63 +61,85 @@ export default function Dashboard() {
 
   useEffect(() => {
     const email = localStorage.getItem("userEmail") || "";
-    setUserEmail(email);
-
     const name = localStorage.getItem("userName");
-    if (name) setUserName(name);
+    const plan = email ? localStorage.getItem(`${email}_activePlan`) : null;
+    const plans = email ? JSON.parse(localStorage.getItem(`${email}_plans`) || "[]") : [];
+    const currentPlan = plans.find((p: any) => p.name === plan);
+    
+    let startW = 80;
+    let goalW = 75;
+    let duration = 3;
+    let startDate = null;
+    let logs: any[] = [];
+    let meals: any[] = [];
+    let weights: any[] = [];
+    let sleep: Record<string, any> = {};
+    let sleepTargetVal = 8;
+    let waterVal = 0;
+    let customT: any = null;
+    
+    if (currentPlan) {
+      startW = currentPlan.weight;
+      goalW = currentPlan.goalWeight;
+      duration = currentPlan.duration;
+      startDate = currentPlan.date || new Date().toISOString();
 
-    if (email) {
-      const plan = localStorage.getItem(`${email}_activePlan`);
-      setActivePlan(plan);
+      const rawLogs = JSON.parse(localStorage.getItem(`${email}_${plan}_exerciseLogs`) || "[]");
+      logs = rawLogs.map((l: any) => ({
+        ...l,
+        date: typeof l.date === 'string' && l.date.length > 10 ? l.date.split('T')[0] : l.date,
+        setNumber: l.setNumber ?? 1,
+      }));
 
-      const plans = JSON.parse(localStorage.getItem(`${email}_plans`) || "[]");
-      setSavedPlans(plans);
+      meals = JSON.parse(localStorage.getItem(`${email}_${plan}_loggedMeals`) || "[]");
+      weights = JSON.parse(localStorage.getItem(`${email}_${plan}_weeklyWeights`) || "[]");
+      sleep = JSON.parse(localStorage.getItem(`${email}_${plan}_sleepLogs`) || "{}");
+      sleepTargetVal = currentPlan.sleepTarget || 8;
 
-      const currentPlan = plans.find((p: any) => p.name === plan);
-      if (currentPlan) {
-        setStartWeight(currentPlan.weight);
-        setGoalWeight(currentPlan.goalWeight);
-        setPlanDuration(currentPlan.duration);
-        setPlanStartDate(currentPlan.date || new Date().toISOString());
+      const todayStr = new Date().toDateString();
+      const storedWater = localStorage.getItem(`${email}_${plan}_water_${todayStr}`);
+      waterVal = storedWater ? parseInt(storedWater) : 0;
 
-        const rawLogs = JSON.parse(localStorage.getItem(`${email}_${plan}_exerciseLogs`) || "[]");
-        // Normalize all dates to YYYY-MM-DD format
-        const logs = rawLogs.map((l: any) => ({
-          ...l,
-          date: typeof l.date === 'string' && l.date.length > 10 ? l.date.split('T')[0] : l.date,
-          setNumber: l.setNumber ?? 1,
-        }));
-        setExerciseLogs(logs);
+      const storedCustom = localStorage.getItem(`${email}_${plan}_customTargets`);
+      if (storedCustom) {
+        try {
+          const parsed = JSON.parse(storedCustom);
+          if (parsed && typeof parsed === "object") {
+            if (parsed.protein && (typeof parsed.protein !== "number" || parsed.protein < 30 || parsed.protein > 500)) delete parsed.protein;
+            if (parsed.calories && (typeof parsed.calories !== "number" || parsed.calories < 1000 || parsed.calories > 10000)) delete parsed.calories;
+            if (parsed.fats && (typeof parsed.fats !== "number" || parsed.fats < 20 || parsed.fats > 300)) delete parsed.fats;
+            if (parsed.water && (typeof parsed.water !== "number" || parsed.water < 1000 || parsed.water > 10000)) delete parsed.water;
+            if (parsed.sleep && (typeof parsed.sleep !== "number" || parsed.sleep < 4 || parsed.sleep > 16)) delete parsed.sleep;
+            customT = parsed;
+          }
+        } catch {}
+      }
+    }
 
-        const meals = JSON.parse(localStorage.getItem(`${email}_${plan}_loggedMeals`) || "[]");
-        setLoggedMeals(meals);
+    const savedCustomEx = email ? JSON.parse(localStorage.getItem(`${email}_customExercises`) || "{}") : {};
 
-        const weights = JSON.parse(localStorage.getItem(`${email}_${plan}_weeklyWeights`) || "[]");
-        setWeeklyWeights(weights);
-
-        // Fetch sleep logs and sleep target
-        const sleep = JSON.parse(localStorage.getItem(`${email}_${plan}_sleepLogs`) || "{}");
-        setSleepLogs(sleep);
-        setSleepTarget(currentPlan.sleepTarget || 8);
-
-        // Reset or fetch water
-        const todayStr = new Date().toDateString();
-        const storedWater = localStorage.getItem(`${email}_${plan}_water_${todayStr}`);
-        if (storedWater) setLoggedWater(parseInt(storedWater));
-        else setLoggedWater(0);
-
-        // Load custom targets
-        const storedCustom = localStorage.getItem(`${email}_${plan}_customTargets`);
-        if (storedCustom) {
-          try {
-            setCustomTargets(JSON.parse(storedCustom));
-          } catch (e) {}
+    Promise.resolve().then(() => {
+      setUserEmail(email);
+      if (name) setUserName(name);
+      if (email) {
+        setActivePlan(plan);
+        setSavedPlans(plans);
+        if (currentPlan) {
+          setStartWeight(startW);
+          setGoalWeight(goalW);
+          setPlanDuration(duration);
+          setPlanStartDate(startDate);
+          setExerciseLogs(logs);
+          setLoggedMeals(meals);
+          setWeeklyWeights(weights);
+          setSleepLogs(sleep);
+          setSleepTarget(sleepTargetVal);
+          setLoggedWater(waterVal);
+          if (customT) setCustomTargets(customT);
         }
       }
-
-      const savedCustomEx = JSON.parse(localStorage.getItem(`${email}_customExercises`) || "{}");
       setCustomExerciseDB(savedCustomEx);
-    }
+    });
   }, []);
 
   const handlePlanChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -302,10 +330,19 @@ export default function Dashboard() {
 
   const handleDrinkWater = (amount: number) => {
     if (!userEmail || !activePlan) return;
+    const todayStr = new Date().toDateString();
+    setLastWaterAmount(loggedWater);
     const newAmount = loggedWater + amount;
     setLoggedWater(newAmount);
-    const todayStr = new Date().toDateString();
     localStorage.setItem(`${userEmail}_${activePlan}_water_${todayStr}`, newAmount.toString());
+  };
+
+  const handleUndoWater = () => {
+    if (!userEmail || !activePlan || lastWaterAmount === null) return;
+    const todayStr = new Date().toDateString();
+    setLoggedWater(lastWaterAmount);
+    localStorage.setItem(`${userEmail}_${activePlan}_water_${todayStr}`, lastWaterAmount.toString());
+    setLastWaterAmount(null);
   };
 
   // --- Dates & Filtering ---
@@ -315,12 +352,17 @@ export default function Dashboard() {
   const todayStr = todayObj.toISOString().split('T')[0];
   const yesterdayStr = yesterdayObj.toISOString().split('T')[0];
 
-  const todayMeals = loggedMeals.filter(m => m.date.startsWith(todayStr));
+  let filteredMeals = loggedMeals;
+  if (dateRange === '7days') {
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    filteredMeals = loggedMeals.filter(m => new Date(m.date) >= sevenDaysAgo);
+  }
 
   // Calculate specific macronutrients
-  const currentCalories = todayMeals.reduce((acc, m) => acc + (m.calories || 0), 0);
-  const currentProtein = todayMeals.reduce((acc, m) => acc + (m.protein || 0), 0);
-  const currentFats = todayMeals.reduce((acc, m) => acc + (m.fat || 0), 0);
+  const currentCalories = filteredMeals.reduce((acc, m) => acc + (m.calories || 0), 0);
+  const currentProtein = filteredMeals.reduce((acc, m) => acc + (m.protein || 0), 0);
+  const currentFats = filteredMeals.reduce((acc, m) => acc + (m.fat || 0), 0);
 
   const currentPlan = savedPlans.find((p: any) => p.name === activePlan);
   const goal = currentPlan?.goal || "maintenance";
@@ -337,14 +379,19 @@ export default function Dashboard() {
   }
 
   const currentActualWeight = weeklyWeights.length > 0 ? weeklyWeights[weeklyWeights.length - 1].weight : startWeight;
-  let targetProtein = Math.round(currentActualWeight * 1.8);
+  let targetProtein = proteinTarget(currentActualWeight, (currentPlan?.goal as Goal) || "maintenance");
   if (customTargets?.protein) {
     targetProtein = customTargets.protein;
   }
-  let targetFats = Math.round(goalWeightLbs * 0.4);
+  let targetFats = roundToOneDecimal(goalWeightLbs * 0.4);
   if (customTargets?.fats) {
     targetFats = customTargets.fats;
   }
+
+  const displayCurrentProtein = formatMacroValue(currentProtein);
+  const displayTargetProtein = formatMacroValue(targetProtein);
+  const displayCurrentFats = formatMacroValue(currentFats);
+  const displayTargetFats = formatMacroValue(targetFats);
 
   // Dynamic scientific water target formula
   const baseHydration = currentActualWeight * 35;
@@ -612,7 +659,7 @@ export default function Dashboard() {
 
   // Exercise Chart Filter
   const filteredLogs = exerciseLogs.filter(l => l.exercise === selectedExercise);
-  const dates = filteredLogs.map(l => new Date(l.date).toLocaleDateString());
+  const dates = filteredLogs.map(l => new Date(l.date).toLocaleDateString('en-US'));
   const oneRMs = filteredLogs.map(l => l.oneRM);
   const current1RM = oneRMs.length > 0 ? oneRMs[oneRMs.length - 1] : null;
   const trackingType = getExerciseTrackingType(selectedExercise, selectedBodyPart);
@@ -622,14 +669,16 @@ export default function Dashboard() {
       {/* Header */}
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 w-full">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Welcome Back, {userName}!</h1>
+          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
+            <Flame className="text-blue-500" /> Welcome Back, {userName}!
+          </h1>
           <p className="text-gray-500 mt-1">Track your daily progress and hit your goals.</p>
         </div>
 
         {activePlan && (
           <div className="flex gap-3 items-center">
             <div className="bg-blue-50 px-4 py-2 rounded-2xl flex items-center gap-2 border border-blue-100">
-              <Flame className="text-blue-500 animate-pulse" size={20} />
+              <Flame className="text-blue-500" size={20} />
               <span className="font-bold text-blue-500">{activePlan}</span>
             </div>
 
@@ -643,9 +692,29 @@ export default function Dashboard() {
               </select>
               <ChevronDown className="absolute right-3 top-2.5 text-gray-400 pointer-events-none" size={16} />
             </div>
+            {/* History selector */}
+            <button
+              onClick={() => setShowHistoryPanel(!showHistoryPanel)}
+              className="inline-flex items-center gap-1 bg-gray-100 hover:bg-gray-200 text-gray-800 px-3 py-2 rounded-full text-sm"
+            >
+              History {showHistoryPanel ? "▲" : "▼"}
+            </button>
           </div>
         )}
       </header>
+      {showHistoryPanel && (
+        <div className="mt-4 bg-gray-50 p-3 rounded-2xl flex items-center gap-4">
+          <span className="text-sm font-medium text-gray-600">Show:</span>
+          <select
+            value={dateRange}
+            onChange={e => setDateRange(e.target.value as typeof dateRange)}
+            className="bg-white border border-gray-300 rounded-md px-2 py-1 text-sm"
+          >
+            <option value="7days">Last 7 days</option>
+            <option value="all">All time</option>
+          </select>
+        </div>
+      )}
 
       {!activePlan ? (
         <div className="bg-white p-12 rounded-3xl shadow-sm border border-gray-50 text-center space-y-6 w-full">
@@ -667,7 +736,7 @@ export default function Dashboard() {
       ) : (
         <div className="space-y-6 w-full">
           {planFinished && (
-            <div className="bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 p-6 rounded-3xl text-white shadow-xl border border-blue-400 flex flex-col md:flex-row justify-between items-center gap-4 animate-pulse-slow">
+            <div className="bg-linear-to-r from-blue-600 via-purple-600 to-indigo-600 p-6 rounded-3xl text-white shadow-xl border border-blue-400 flex flex-col md:flex-row justify-between items-center gap-4 animate-pulse-slow">
               <div className="flex items-center gap-4">
                 <div className="bg-white/20 p-3 rounded-2xl shrink-0">
                   <Trophy className="text-yellow-300 animate-bounce" size={32} />
@@ -749,7 +818,7 @@ export default function Dashboard() {
               </div>
               <div className="text-center">
                 <span className="text-xs text-gray-500 flex items-center justify-center gap-1"><Droplets size={12} /> Protein (15%)</span>
-                <p className="font-bold text-gray-900 mt-1">{currentProtein} / {targetProtein}g</p>
+                <p className="font-bold text-gray-900 mt-1">{displayCurrentProtein} / {displayTargetProtein}g</p>
               </div>
               <div className="text-center">
                 <span className="text-xs text-gray-500 flex items-center justify-center gap-1"><Dumbbell size={12} /> Workout (12%)</span>
@@ -761,7 +830,7 @@ export default function Dashboard() {
               </div>
               <div className="text-center">
                 <span className="text-xs text-gray-500 flex items-center justify-center gap-1"><Coffee size={12} /> Fats (8%)</span>
-                <p className="font-bold text-gray-900 mt-1">{currentFats} / {targetFats}g</p>
+                <p className="font-bold text-gray-900 mt-1">{displayCurrentFats} / {displayTargetFats}g</p>
               </div>
             </div>
 
@@ -831,7 +900,7 @@ export default function Dashboard() {
                         </div>
                         <div>
                           <p className="text-xs font-bold text-gray-900">Protein (Max 15pts)</p>
-                          <p className="text-[11px] text-gray-500">Target: {targetProtein}g | Got: {currentProtein}g</p>
+                          <p className="text-[11px] text-gray-500">Target: {displayTargetProtein}g | Got: {displayCurrentProtein}g</p>
                         </div>
                       </div>
                       <div className="text-right">
@@ -888,7 +957,7 @@ export default function Dashboard() {
                         </div>
                         <div>
                           <p className="text-xs font-bold text-gray-900">Fats (Max 8pts)</p>
-                          <p className="text-[11px] text-gray-500">Target: {targetFats}g | Got: {currentFats}g</p>
+                          <p className="text-[11px] text-gray-500">Target: {displayTargetFats}g | Got: {displayCurrentFats}g</p>
                         </div>
                       </div>
                       <div className="text-right">
@@ -966,14 +1035,14 @@ export default function Dashboard() {
                 <div>
                   <div className="flex items-center justify-between text-xs mb-1">
                     <span className="text-gray-500">Protein</span>
-                    <span className="font-medium text-gray-900">{currentProtein} / {targetProtein} g</span>
+                    <span className="font-medium text-gray-900">{displayCurrentProtein} / {displayTargetProtein} g</span>
                   </div>
                   <ProgressBar label="" progress={protScore} colorClass="bg-green-500" showText={false} />
                 </div>
                 <div>
                   <div className="flex items-center justify-between text-xs mb-1">
                     <span className="text-gray-500">Fats</span>
-                    <span className="font-medium text-gray-900">{currentFats} / {targetFats} g</span>
+                    <span className="font-medium text-gray-900">{displayCurrentFats} / {displayTargetFats} g</span>
                   </div>
                   <ProgressBar label="" progress={fatScore} colorClass="bg-yellow-500" showText={false} />
                 </div>
@@ -982,9 +1051,10 @@ export default function Dashboard() {
                     <span className="text-gray-500">Hydration (ml)</span>
                     <span className="font-medium text-gray-900">{loggedWater} / {targetHydration}</span>
                   </div>
-                  <div className="flex gap-2 mt-1">
+                  <div className="flex flex-wrap gap-2 mt-1">
                     <button onClick={() => handleDrinkWater(250)} className="text-xs bg-blue-50 text-blue-500 px-2 py-1 rounded-md hover:bg-blue-100">+250ml</button>
                     <button onClick={() => handleDrinkWater(500)} className="text-xs bg-blue-50 text-blue-500 px-2 py-1 rounded-md hover:bg-blue-100">+500ml</button>
+                    <button onClick={handleUndoWater} disabled={lastWaterAmount === null} className="text-xs bg-gray-50 text-gray-700 px-2 py-1 rounded-md hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed">Undo</button>
                   </div>
                 </div>
               </div>
@@ -1000,14 +1070,14 @@ export default function Dashboard() {
                   <select
                     value={selectedBodyPart}
                     onChange={handleBodyPartChange}
-                    className="bg-gray-50 border border-gray-100 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-blue-500 text-gray-700 max-w-[80px]"
+                    className="bg-gray-50 border border-gray-100 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-blue-500 text-gray-700 max-w-20"
                   >
                     {Object.keys(defaultExerciseDatabase).map(part => <option key={part} value={part}>{part}</option>)}
                   </select>
                   <select
                     value={selectedExercise}
                     onChange={(e) => setSelectedExercise(e.target.value)}
-                    className="bg-gray-50 border border-gray-100 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-blue-500 text-gray-700 max-w-[100px]"
+                    className="bg-gray-50 border border-gray-100 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-blue-500 text-gray-700 max-w-25"
                   >
                     {getAvailableExercises(selectedBodyPart).map(ex => <option key={ex} value={ex}>{ex}</option>)}
                   </select>

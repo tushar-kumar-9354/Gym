@@ -62,6 +62,7 @@ export async function POST(request: Request) {
           message: "OTP has been sent to your email address." 
         });
 
+// @ts-ignore
       } catch (smtpError: any) {
         console.error("[SMTP ERROR] Failed to send email via nodemailer:", smtpError);
         // Fallback to console log in development/sandbox so it doesn't break user flow

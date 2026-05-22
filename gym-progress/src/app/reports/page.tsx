@@ -1,13 +1,19 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Download, FileText, FileSpreadsheet, Calendar, BarChart2, CheckCircle2, FileJson, Trophy } from "lucide-react";
+import Link from "next/link";
+import { Download, FileText, FileSpreadsheet, Calendar, BarChart2, CheckCircle2, FileJson, Trophy, Zap, Droplet } from "lucide-react";
+import { proteinTarget } from "@/lib/protein";
 
 export default function ReportsExport() {
   const [userEmail, setUserEmail] = useState("");
   const [activePlan, setActivePlan] = useState<string | null>(null);
   const [dailyReports, setDailyReports] = useState<any[]>([]);
   const [exerciseLogs, setExerciseLogs] = useState<any[]>([]);
+  const [loggedMeals, setLoggedMeals] = useState<any[]>([]);
+  const [weeklyAnalysis, setWeeklyAnalysis] = useState<any>(null);
+  const [loadingWeekly, setLoadingWeekly] = useState(false);
+  const [errorWeekly, setErrorWeekly] = useState<string | null>(null);
 
   useEffect(() => {
     const email = localStorage.getItem("userEmail") || "";
@@ -22,16 +28,94 @@ export default function ReportsExport() {
 
       const logs = JSON.parse(localStorage.getItem(`${email}_${plan}_exerciseLogs`) || "[]");
       setExerciseLogs(logs);
+
+      const meals = JSON.parse(localStorage.getItem(`${email}_${plan}_loggedMeals`) || "[]");
+      setLoggedMeals(meals);
     }
   }, []);
 
-  // Calculate Personal Bests
-  const personalBests: { [key: string]: number } = {};
-  exerciseLogs.forEach(log => {
-    if (!personalBests[log.exercise] || log.weight > personalBests[log.exercise]) {
-      personalBests[log.exercise] = log.weight;
+  // State for personal bests
+  const [personalBests, setPersonalBests] = useState<Record<string, number>>({});
+
+  // Compute personal bests from exercise logs
+  useEffect(() => {
+    const bests: Record<string, number> = {};
+    exerciseLogs.forEach((log: any) => {
+      const name = log.exercise || log.name || "Unknown Exercise";
+      const weight = log.weight ?? log.oneRM ?? 0;
+      if (!bests[name] || weight > bests[name]) {
+        bests[name] = weight;
+      }
+    });
+    setPersonalBests(bests);
+  }, [exerciseLogs]);
+
+// Fetch weekly AI analysis when data is ready
+  // Removed automatic weekly AI fetch. The weekly analysis will now be triggered by a button click.
+
+
+  // Fetch weekly AI analysis on demand
+  const fetchWeekly = async () => {
+    setLoadingWeekly(true);
+    setErrorWeekly(null);
+    try {
+      const userProfile = JSON.parse(localStorage.getItem(`${userEmail}_userProfile`) || "{}");
+      const plans = JSON.parse(localStorage.getItem(`${userEmail}_plans`) || "[]");
+      const activePlanObject = plans.find((p: any) => p.name === activePlan) || null;
+
+      const foodCounts: Record<string, { name: string; calories: number; protein: number; count: number }> = {};
+      loggedMeals.forEach((meal: any) => {
+        const key = meal.name || meal.food || "Unknown";
+        const existing = foodCounts[key] || { name: key, calories: meal.calories || 0, protein: meal.protein || 0, count: 0 };
+        existing.calories = meal.calories || existing.calories;
+        existing.protein = meal.protein || existing.protein;
+        existing.count += 1;
+        foodCounts[key] = existing;
+      });
+      const frequentFoods = Object.values(foodCounts)
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5);
+
+      const computeWaterTarget = (weightKg: number, goal: string, activityLevel: string) => {
+        const base = weightKg * 35;
+        const gainGoal = /muscle|bulk|gain/i.test(goal);
+        const goalBonus = gainGoal ? 500 : 0;
+        const multipliers: Record<string, number> = { sedentary: 1.0, light: 1.1, moderate: 1.2, active: 1.3 };
+        const multiplier = multipliers[activityLevel?.toLowerCase()] ?? 1.2;
+        return Math.round((base + goalBonus) * multiplier);
+      };
+
+      const body = {
+        activePlanName: activePlan,
+        startWeight: activePlanObject?.weight ?? null,
+        goalWeight: activePlanObject?.goalWeight ?? null,
+        planDuration: activePlanObject?.duration ?? null,
+        targetCalories: activePlanObject?.targetCalories ?? null,
+        targetProtein: activePlanObject ? proteinTarget(activePlanObject.weight, activePlanObject.goal) : null,
+        targetFats: activePlanObject ? Math.round((activePlanObject.goalWeight * 2.20462) * 0.4 * 10) / 10 : null,
+        targetHydration: activePlanObject ? computeWaterTarget(activePlanObject.weight, activePlanObject.goal, activePlanObject.activityLevel) : null,
+        goal: activePlanObject?.goal ?? null,
+        activityLevel: activePlanObject?.activityLevel ?? null,
+        currentWeight: dailyReports.length > 0 ? dailyReports[dailyReports.length - 1].weight ?? activePlanObject?.weight ?? null : activePlanObject?.weight ?? null,
+        dailyReports,
+        userProfile,
+        frequentFoods,
+      };
+      const res = await fetch("/api/gemini/analyze-weekly-secondary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(`API error ${res.status}`);
+      const data = await res.json();
+      setWeeklyAnalysis(data);
+    } catch (e: any) {
+      setErrorWeekly(e.message);
+    } finally {
+      setLoadingWeekly(false);
     }
-  });
+  };
+
 
   const generateAITextReport = () => {
     const totalDays = dailyReports.length;
@@ -190,17 +274,32 @@ export default function ReportsExport() {
                 <span className="font-bold text-blue-500">{activePlan || "None"}</span>
               </div>
             </div>
+            {/* Button to generate Weekly AI Report */}
+            <div className="mt-4 text-center">
+              <button
+                onClick={fetchWeekly}
+                disabled={loadingWeekly}
+                className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Zap size={18} /> Generate Weekly AI Report
+              </button>
+              {errorWeekly ? (
+                <p className="mt-3 text-sm text-red-500">Unable to generate AI report: {errorWeekly}</p>
+              ) : null}
+            </div>
           </section>
 
+          
           {/* Personal Bests Card */}
           <section className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
             <h2 className="text-xl font-semibold mb-4 flex items-center gap-2 text-blue-500">
               <Trophy size={20} /> Personal Bests
             </h2>
-            
+
+            {/* Exercise Records */}
             <div className="space-y-3 max-h-40 overflow-y-auto">
               {Object.keys(personalBests).length === 0 ? (
-                <p className="text-sm text-gray-500 text-center">No records yet.</p>
+                <p className="text-sm text-gray-500 text-center">No exercise records yet.</p>
               ) : (
                 Object.entries(personalBests).map(([ex, weight]) => (
                   <div key={ex} className="flex justify-between items-center text-sm">
@@ -210,6 +309,77 @@ export default function ReportsExport() {
                 ))
               )}
             </div>
+
+            {/* Nutrition Records */}
+            {dailyReports.length > 0 && (
+              <div className="space-y-2 pt-4 border-t border-gray-100 mt-4">
+                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Nutrition Records</h3>
+
+                {/* Best Protein Day */}
+                <div className="flex justify-between items-center text-sm bg-green-50 p-2.5 rounded-lg border border-green-100">
+                  <div className="flex items-center gap-2">
+                    <div className="bg-green-100 p-1 rounded text-green-600">
+                      <Trophy size={12} />
+                    </div>
+                    <span className="text-xs font-medium text-gray-700">Best Protein</span>
+                  </div>
+                  <span className="font-bold text-green-700 text-xs">
+                    {(() => {
+                      const bestProtein = dailyReports.reduce((max, d) => d.protein > max.protein ? d : max, dailyReports[0]);
+                      return `${bestProtein.protein}g on ${new Date(bestProtein.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+                    })()}
+                  </span>
+                </div>
+
+                {/* Best Calories Day */}
+                <div className="flex justify-between items-center text-sm bg-orange-50 p-2.5 rounded-lg border border-orange-100">
+                  <div className="flex items-center gap-2">
+                    <div className="bg-orange-100 p-1 rounded text-orange-600">
+                      <FileText size={12} />
+                    </div>
+                    <span className="text-xs font-medium text-gray-700">Best Calories</span>
+                  </div>
+                  <span className="font-bold text-orange-700 text-xs">
+                    {(() => {
+                      const bestCals = dailyReports.reduce((max, d) => d.calories > max.calories ? d : max, dailyReports[0]);
+                      return `${bestCals.calories} kcal on ${new Date(bestCals.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+                    })()}
+                  </span>
+                </div>
+
+                {/* Best Hydration Day */}
+                <div className="flex justify-between items-center text-sm bg-blue-50 p-2.5 rounded-lg border border-blue-100">
+                  <div className="flex items-center gap-2">
+                    <div className="bg-blue-100 p-1 rounded text-blue-600">
+                      <Droplet size={12} />
+                    </div>
+                    <span className="text-xs font-medium text-gray-700">Best Hydration</span>
+                  </div>
+                  <span className="font-bold text-blue-700 text-xs">
+                    {(() => {
+                      const bestHydration = dailyReports.reduce((max, d) => d.water > max.water ? d : max, dailyReports[0]);
+                      return `${bestHydration.water}ml on ${new Date(bestHydration.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+                    })()}
+                  </span>
+                </div>
+
+                {/* Best Score Day */}
+                <div className="flex justify-between items-center text-sm bg-purple-50 p-2.5 rounded-lg border border-purple-100">
+                  <div className="flex items-center gap-2">
+                    <div className="bg-purple-100 p-1 rounded text-purple-600">
+                      <BarChart2 size={12} />
+                    </div>
+                    <span className="text-xs font-medium text-gray-700">Best Score</span>
+                  </div>
+                  <span className="font-bold text-purple-700 text-xs">
+                    {(() => {
+                      const bestScore = dailyReports.reduce((max, d) => d.score > max.score ? d : max, dailyReports[0]);
+                      return `${bestScore.score}% on ${new Date(bestScore.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+                    })()}
+                  </span>
+                </div>
+              </div>
+            )}
           </section>
         </div>
 
@@ -227,9 +397,13 @@ export default function ReportsExport() {
                 <p className="text-sm">Go to the Journey page and click "I have done my today's" to save a day!</p>
               </div>
             ) : (
-              <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2">
+              <div className="space-y-4 max-h-150 overflow-y-auto pr-2">
                 {dailyReports.map((day, index) => (
-                  <div key={index} className="border border-gray-100 rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                  <Link
+                    key={index}
+                    href={`/reports/${index}`}
+                    className="block border border-gray-100 rounded-lg p-4 hover:bg-gray-50 transition-colors"
+                  >
                     <div className="flex justify-between items-center mb-2">
                       <span className="font-bold text-gray-900">{day.date}</span>
                       <span className="bg-blue-50 text-blue-500 px-2 py-1 rounded text-xs font-bold">Score: {day.score}%</span>
@@ -240,8 +414,31 @@ export default function ReportsExport() {
                       <div>🏋️‍♂️ {day.exercises?.length || 0} exercises</div>
                       <div>😴 {day.sleepHours !== null && day.sleepHours !== undefined ? `${day.sleepHours}h` : "N/A"} sleep</div>
                     </div>
-                  </div>
+                  </Link>
                 ))}
+                {weeklyAnalysis && (
+                  <section className="mt-6 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                    <h2 className="text-xl font-semibold mb-4 flex items-center gap-2 text-blue-500">
+                      <Zap size={20} /> Weekly AI Insight & Recommendation
+                    </h2>
+                    <div className="space-y-4">
+                      <p className="text-gray-800 whitespace-pre-line">{weeklyAnalysis.weeklyReport}</p>
+                      <p className="font-medium text-gray-700">Recommendation: {weeklyAnalysis.routineRecommendation}</p>
+                      {weeklyAnalysis.newRoutine && (
+                        <>
+                          <h3 className="font-semibold mt-3">New Optimized Routine Summary</h3>
+                          <p className="text-gray-800 whitespace-pre-line">{weeklyAnalysis.newRoutine.summary || "No summary available."}</p>
+                          <h4 className="font-semibold mt-2">Tips</h4>
+                          <ul className="list-disc list-inside text-gray-700">
+                            {(weeklyAnalysis.newRoutine.tips || []).map((tip: string, i: number) => (
+                              <li key={i}>{tip}</li>
+                            ))}
+                          </ul>
+                        </>
+                      )}
+                    </div>
+                  </section>
+                )}
               </div>
             )}
           </section>

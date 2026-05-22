@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 
 import {
   Calendar, ChevronDown, Clock, Activity, Target, Flame, Sparkles,
@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { Line } from "react-chartjs-2";
+import { proteinTarget, Goal } from "@/lib/protein";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -86,44 +87,50 @@ export default function DailyRoutine() {
 
   useEffect(() => {
     const email = localStorage.getItem("userEmail") || "";
-    setUserEmail(email);
-    if (email) {
-      const planName = localStorage.getItem(`${email}_activePlan`);
-      setActivePlan(planName);
-      const plans = JSON.parse(localStorage.getItem(`${email}_plans`) || "[]");
-      setSavedPlans(plans);
-      if (planName) {
-        const storedRoutine = localStorage.getItem(`${email}_${planName}_aiRoutine`);
-        if (storedRoutine) {
-          try { setAiRoutine(JSON.parse(storedRoutine)); } catch { /* ignore */ }
+    const planName = email ? localStorage.getItem(`${email}_activePlan`) : null;
+    const plans = email ? JSON.parse(localStorage.getItem(`${email}_plans`) || "[]") : [];
+    const storedRoutine = (email && planName) ? localStorage.getItem(`${email}_${planName}_aiRoutine`) : null;
+    const storedCustom = (email && planName) ? localStorage.getItem(`${email}_${planName}_customTargets`) : null;
+    const storedProfile = email ? localStorage.getItem(`${email}_userProfile`) : null;
+
+    Promise.resolve().then(() => {
+      setUserEmail(email);
+      if (email) {
+        setActivePlan(planName);
+        setSavedPlans(plans);
+        if (planName) {
+          if (storedRoutine) {
+            try { setAiRoutine(JSON.parse(storedRoutine)); } catch { /* ignore */ }
+          }
+          if (storedCustom) {
+            try {
+              const parsed = JSON.parse(storedCustom);
+              if (parsed && typeof parsed === "object") {
+                if (parsed.protein && (typeof parsed.protein !== "number" || parsed.protein < 30 || parsed.protein > 500)) delete parsed.protein;
+                if (parsed.calories && (typeof parsed.calories !== "number" || parsed.calories < 1000 || parsed.calories > 10000)) delete parsed.calories;
+                if (parsed.fats && (typeof parsed.fats !== "number" || parsed.fats < 20 || parsed.fats > 300)) delete parsed.fats;
+                if (parsed.water && (typeof parsed.water !== "number" || parsed.water < 1000 || parsed.water > 10000)) delete parsed.water;
+                if (parsed.sleep && (typeof parsed.sleep !== "number" || parsed.sleep < 4 || parsed.sleep > 16)) delete parsed.sleep;
+                setCustomTargets(parsed);
+              }
+            } catch (e) {}
+          }
         }
-        const storedCustom = localStorage.getItem(`${email}_${planName}_customTargets`);
-        if (storedCustom) {
-          try { setCustomTargets(JSON.parse(storedCustom)); } catch { /* ignore */ }
+
+        if (storedProfile) {
+          try {
+            const profile = JSON.parse(storedProfile);
+            setDietPreference(profile.dietPreference || "Flexible");
+            setExperienceLevel(profile.experienceLevel || "Intermediate");
+            setMedicalContext(profile.medicalContext || "None");
+            setInjuries(profile.injuries || "Achieve goal efficiently and safely");
+            setGymTiming(profile.gymTiming || "06:00 PM");
+            setWakeTime(profile.wakeTime || "06:30 AM");
+            setSleepTime(profile.sleepTime || "10:30 PM");
+          } catch { /* ignore */ }
         }
       }
-
-      const lastWeighInDate = new Date(localStorage.getItem(`${email}_lastWeighIn`) || 0);
-      const todayObj = new Date();
-      const diffSinceLastMs = Math.abs(todayObj.getTime() - lastWeighInDate.getTime());
-      // Test mode: use a short interval (10 seconds) instead of 7 days for rapid testing
-      const TEST_MODE = false; // Set to false in production
-      const intervalMs = TEST_MODE ? 10 * 1000 : 7 * 24 * 60 * 60 * 1000; // 10 seconds or 7 days
-
-      const storedProfile = localStorage.getItem(`${email}_userProfile`);
-      if (storedProfile) {
-        try {
-          const profile = JSON.parse(storedProfile);
-          setDietPreference(profile.dietPreference || "Flexible");
-          setExperienceLevel(profile.experienceLevel || "Intermediate");
-          setMedicalContext(profile.medicalContext || "None");
-          setInjuries(profile.injuries || "Achieve goal efficiently and safely");
-          setGymTiming(profile.gymTiming || "06:00 PM");
-          setWakeTime(profile.wakeTime || "06:30 AM");
-          setSleepTime(profile.sleepTime || "10:30 PM");
-        } catch { /* ignore */ }
-      }
-    }
+    });
   }, []);
 
   const handlePlanChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -155,7 +162,7 @@ export default function DailyRoutine() {
   if (targetCalories < 1200 && startWeight > goalWeight) targetCalories = 1200;
   if (customTargets?.calories) targetCalories = customTargets.calories;
 
-  let targetProtein = Math.round(startWeight * 1.8);
+  let targetProtein = proteinTarget(startWeight, (goal as Goal) || "maintenance");
   if (customTargets?.protein) targetProtein = customTargets.protein;
 
   let targetFats = Math.round(goalWeightLbs * 0.4);
@@ -306,12 +313,12 @@ export default function DailyRoutine() {
     alert("Personal profile record saved! The AI will now use these preferences and timings to craft an optimized routine.");
   };
 
-  const recordRequest = () => {
+  const recordRequest = useCallback(() => {
     if (!userEmail) return;
     const key = `${userEmail}_ai_routine_rate_limit`;
     const timestamps: number[] = JSON.parse(localStorage.getItem(key) || "[]");
     timestamps.push(Date.now());
-  };
+  }, [userEmail]);
 
   const generateAIRoutine = async () => {
     if (!activePlan || !userEmail) return;
@@ -578,14 +585,14 @@ export default function DailyRoutine() {
                 </div>
                 <h3 className="text-xl font-bold text-gray-900">Generating Your AI Routine...</h3>
                 <p className="text-gray-500 max-w-sm mx-auto">
-                  Analyzing your targets, water needs, sleep schedule, and activity level. This takes // Adjusted test mode interval to 10 seconds for rapid weekly weight testing
+                  Analyzing your targets, water needs, sleep schedule, and activity level. This takes a few moments.
                 </p>
               </div>
             ) : aiRoutine ? (
               <div className="space-y-6">
 
                 {/* AI Summary Banner */}
-                <div className="bg-gradient-to-r from-blue-500 to-indigo-600 p-6 rounded-3xl text-white shadow-md relative overflow-hidden">
+                <div className="bg-linear-to-r from-blue-500 to-indigo-600 p-6 rounded-3xl text-white shadow-md relative overflow-hidden">
                   <div className="absolute right-4 top-4 text-white opacity-10"><Sparkles size={100} /></div>
                   <span className="inline-flex items-center gap-1 bg-white/20 px-3 py-1 rounded-full text-xs font-semibold mb-3">
                     <Sparkles size={12} /> Groq AI Optimized
@@ -636,7 +643,7 @@ export default function DailyRoutine() {
                         </div>
                       </div>
                     </div>
-                    <div className="h-[300px] w-full relative">
+                    <div className="h-75 w-full relative">
                       <Line data={chartData} options={chartOptions} />
                     </div>
                   </div>
@@ -665,7 +672,7 @@ export default function DailyRoutine() {
                   <div className="relative border-l-2 border-blue-100 ml-4 space-y-8 pb-4">
                     {(aiRoutine.timetable || []).map((item, idx) => (
                       <div key={idx} className="relative pl-8">
-                        <div className="absolute -left-[9px] top-1 bg-white border-4 border-blue-500 w-4 h-4 rounded-full shadow-sm" />
+                        <div className="absolute -left-2.25 top-1 bg-white border-4 border-blue-500 w-4 h-4 rounded-full shadow-sm" />
                         <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4 mb-2">
                           <span className="text-sm font-bold text-blue-500 flex items-center gap-1">
                             <Clock size={14} /> {item.time}

@@ -1,8 +1,16 @@
 export function calculateOneRM(weight: number, reps: number): number {
   // Epley formula: weight * (1 + reps / 30)
   const oneRM = weight * (1 + reps / 30);
-  // round to one decimal place
-  return Math.round(oneRM * 10) / 10;
+  // round to two decimal places for milestone precision
+  return Math.round(oneRM * 100) / 100;
+}
+
+export function roundToOneDecimal(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+export function formatMacroValue(value: number): string {
+  return roundToOneDecimal(value).toFixed(1);
 }
 
 export type ExerciseTrackingType = "1RM" | "Reps" | "Time";
@@ -34,6 +42,6 @@ export function formatExerciseValue(value: number, type: ExerciseTrackingType): 
   if (type === "Reps") {
     return `${value} reps`;
   }
-  return `${value} kg`;
+  return `${value.toFixed(2)} kg`;
 }
 

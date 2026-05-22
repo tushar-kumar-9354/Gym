@@ -5,7 +5,7 @@ import { Calendar as CalendarIcon, CheckCircle2, Trash2, Plus, Search, Loader2, 
 import ProgressBar from "@/components/ProgressBar";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { getExerciseTrackingType, formatExerciseValue, calculateOneRM } from "@/utils/oneRM";
+import { getExerciseTrackingType, formatExerciseValue, calculateOneRM, roundToOneDecimal } from "@/utils/oneRM";
 
 interface FoodItem {
   name: string;
@@ -30,6 +30,14 @@ function JourneyContent() {
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<FoodItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [customMeals, setCustomMeals] = useState<FoodItem[]>([]);
+  const [showCustomForm, setShowCustomForm] = useState(false);
+  const [mealName, setMealName] = useState("");
+  const [calories, setCalories] = useState("");
+  const [protein, setProtein] = useState("");
+  const [carbs, setCarbs] = useState("");
+  const [fat, setFat] = useState("");
+  const [savePermanent, setSavePermanent] = useState(false);
 
   // Exercise States
   const [bodyPart, setBodyPart] = useState("Chest");
@@ -47,6 +55,7 @@ function JourneyContent() {
 
   // Water States
   const [waterIntake, setWaterIntake] = useState(0);
+  const [waterHistory, setWaterHistory] = useState<{ ml: number; timestamp: string }[]>([]);
 
   // Sleep States
   const [sleepHours, setSleepHours] = useState<number | "">("");
@@ -103,6 +112,9 @@ function JourneyContent() {
     const savedCustomEx = JSON.parse(localStorage.getItem(`${email}_customExercises`) || "{}");
     setCustomExerciseDB(savedCustomEx);
 
+    const savedMeals = JSON.parse(localStorage.getItem(`${email}_customMeals`) || "[]");
+    setCustomMeals(savedMeals);
+
     // START FROM TODAY (0 to 30 days in future)
     const today = new Date();
     const dates = [];
@@ -116,7 +128,7 @@ function JourneyContent() {
     if (email && plan) {
       loadDayData(email, plan, selectedDate);
     }
-    setSearchResults(defaultFoods);
+    setSearchResults([...defaultFoods, ...savedMeals]);
   }, [selectedDate]);
 
   const loadDayData = (email: string, plan: string, date: string) => {
@@ -141,11 +153,12 @@ function JourneyContent() {
   // Diet Handlers
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
+    const allFoods = [...defaultFoods, ...customMeals];
     if (!query) {
-      setSearchResults(defaultFoods);
+      setSearchResults(allFoods);
       return;
     }
-    const filtered = defaultFoods.filter(f => f.name.toLowerCase().includes(query.toLowerCase()));
+    const filtered = allFoods.filter(f => f.name.toLowerCase().includes(query.toLowerCase()));
     setSearchResults(filtered);
     setLoading(true);
     try {
@@ -158,7 +171,7 @@ function JourneyContent() {
         carbs: getNutrientValue(f, "Carbohydrate"),
         fat: getNutrientValue(f, "Total lipid"),
       }));
-      setSearchResults([...filtered, ...apiFoods]);
+      setSearchResults([...filtered, ...apiFoods, ...customMeals]);
     } catch (error) {
       console.error("Error searching food:", error);
     } finally {
@@ -179,6 +192,50 @@ function JourneyContent() {
     localStorage.setItem(`${userEmail}_${activePlan}_loggedMeals`, JSON.stringify(updated));
     setLoggedMeals(updated.filter((m: any) => new Date(m.date).toISOString().split('T')[0] === selectedDate));
     alert(`${food.name} added!`);
+  };
+
+  const handleSaveCustomMeal = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userEmail || !activePlan) {
+      alert("Please select a plan first before saving a custom meal.");
+      return;
+    }
+    if (!mealName || !calories) {
+      alert("Please provide a meal name and calories.");
+      return;
+    }
+
+    const customMeal = {
+      name: mealName.trim(),
+      calories: parseFloat(calories),
+      protein: parseFloat(protein) || 0,
+      carbs: parseFloat(carbs) || 0,
+      fat: parseFloat(fat) || 0,
+    };
+
+    let updatedCustomMeals = customMeals;
+    if (savePermanent) {
+      const savedMeals = JSON.parse(localStorage.getItem(`${userEmail}_customMeals`) || "[]");
+      updatedCustomMeals = [...savedMeals, customMeal];
+      localStorage.setItem(`${userEmail}_customMeals`, JSON.stringify(updatedCustomMeals));
+      setCustomMeals(updatedCustomMeals);
+    }
+
+    const currentLogged = JSON.parse(localStorage.getItem(`${userEmail}_${activePlan}_loggedMeals`) || "[]");
+    const loggedMeal = { ...customMeal, date: new Date(selectedDate).toISOString() };
+    const updatedLogged = [...currentLogged, loggedMeal];
+    localStorage.setItem(`${userEmail}_${activePlan}_loggedMeals`, JSON.stringify(updatedLogged));
+    setLoggedMeals(updatedLogged.filter((m: any) => new Date(m.date).toISOString().split('T')[0] === selectedDate));
+
+    setShowCustomForm(false);
+    setMealName("");
+    setCalories("");
+    setProtein("");
+    setCarbs("");
+    setFat("");
+    setSavePermanent(false);
+    setSearchResults([...defaultFoods, ...updatedCustomMeals]);
+    alert(savePermanent ? "Custom meal saved permanently and added to today's log!" : "Custom meal added to today's log!");
   };
 
   const handleRemoveMeal = (index: number) => {
@@ -327,6 +384,30 @@ function JourneyContent() {
     water[selectedDate] = current + ml;
     localStorage.setItem(`${userEmail}_${activePlan}_waterIntake`, JSON.stringify(water));
     setWaterIntake(current + ml);
+    // Track water intake history for undo functionality
+    setWaterHistory(prev => [...prev, { ml, timestamp: new Date().toLocaleTimeString() }]);
+  };
+  const handleUndoWater = () => {
+    if (waterHistory.length === 0) return;
+    const lastEntry = waterHistory[waterHistory.length - 1];
+    const water = JSON.parse(localStorage.getItem(`${userEmail}_${activePlan}_waterIntake`) || "{}");
+    const current = water[selectedDate] || 0;
+    const newAmount = Math.max(0, current - lastEntry.ml);
+    water[selectedDate] = newAmount;
+    localStorage.setItem(`${userEmail}_${activePlan}_waterIntake`, JSON.stringify(water));
+    setWaterIntake(newAmount);
+    setWaterHistory(prev => prev.slice(0, -1));
+  };
+  const handleUndoSpecificWater = (index: number) => {
+    if (index < 0 || index >= waterHistory.length) return;
+    const entryToRemove = waterHistory[index];
+    const water = JSON.parse(localStorage.getItem(`${userEmail}_${activePlan}_waterIntake`) || "{}");
+    const current = water[selectedDate] || 0;
+    const newAmount = Math.max(0, current - entryToRemove.ml);
+    water[selectedDate] = newAmount;
+    localStorage.setItem(`${userEmail}_${activePlan}_waterIntake`, JSON.stringify(water));
+    setWaterIntake(newAmount);
+    setWaterHistory(prev => prev.filter((_, i) => i !== index));
   };
 
   // Sleep Handler
@@ -347,6 +428,13 @@ function JourneyContent() {
     carbs: acc.carbs + meal.carbs,
     fat: acc.fat + meal.fat,
   }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
+
+  const formatMacroValue = (value: number) => {
+    return roundToOneDecimal(value).toFixed(1);
+  };
+
+  const displayProtein = formatMacroValue(currentDiet.protein);
+  const displayFat = formatMacroValue(currentDiet.fat);
 
   // --- Complex Target Calculations ---
   const goalWeightLbs = goalWeight * 2.20462;
@@ -486,7 +574,7 @@ function JourneyContent() {
                   <button
                     key={date}
                     onClick={() => setSelectedDate(date)}
-                    className={`flex flex-col items-center p-3 rounded-2xl min-w-[65px] transition-all ${
+                    className={`flex flex-col items-center p-3 rounded-2xl min-w-16.25 transition-all ${
                       isSelected 
                         ? 'bg-blue-500 text-white shadow-md transform scale-105' 
                         : isToday ? 'bg-blue-50 text-blue-500 border border-blue-200' : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
@@ -523,10 +611,10 @@ function JourneyContent() {
                 {[
                   { label: "Sleep (30%)", val: savedSleep ? `${savedSleep.hours} / ${sleepTarget}h` : `0 / ${sleepTarget}h`, pct: sleepScore, color: "bg-purple-500" },
                   { label: "Calories (25%)", val: `${currentDiet.calories} / ${targetCalories} kcal`, pct: calScore, color: "bg-orange-400" },
-                  { label: "Protein (15%)", val: `${Math.round(currentDiet.protein)} / ${targetProtein}g`, pct: proteinScore, color: "bg-blue-400" },
+                  { label: "Protein (15%)", val: `${displayProtein} / ${targetProtein}g`, pct: proteinScore, color: "bg-blue-400" },
                   { label: "Workout (12%)", val: exerciseLogs.length > 0 ? `${exerciseLogs.length} sets done` : "Not done", pct: exerciseScore, color: "bg-green-400" },
                   { label: "Hydration (10%)", val: `${(waterIntake/1000).toFixed(1)} / ${(waterTarget/1000).toFixed(1)}L`, pct: waterScore, color: "bg-cyan-400" },
-                  { label: "Fats (8%)", val: `${Math.round(currentDiet.fat)} / ${targetFats}g`, pct: fatScore, color: "bg-purple-400" },
+                  { label: "Fats (8%)", val: `${displayFat} / ${targetFats}g`, pct: fatScore, color: "bg-purple-400" },
                 ].map(({ label, val, pct, color }) => (
                   <div key={label}>
                     <div className="flex justify-between text-xs mb-1">
@@ -615,17 +703,51 @@ function JourneyContent() {
                   <button onClick={() => handleAddWater(500)} className="bg-blue-50 hover:bg-blue-100 text-blue-500 py-2.5 rounded-2xl text-sm font-medium transition-colors border border-blue-50">+500ml</button>
                   <button onClick={() => handleAddWater(1000)} className="bg-blue-50 hover:bg-blue-100 text-blue-500 py-2.5 rounded-2xl text-sm font-medium transition-colors border border-blue-50">+1L</button>
                 </div>
+                {waterHistory.length > 0 && (
+                  <div className="space-y-3 pt-4 border-t border-gray-100">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-gray-500">Water History</span>
+                      <button
+                        onClick={handleUndoWater}
+                        className="text-xs font-semibold text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-3 py-1 rounded-lg transition-colors"
+                      >
+                        Undo Last
+                      </button>
+                    </div>
+                    <div className="space-y-2 max-h-32 overflow-y-auto">
+                      {waterHistory.map((entry, index) => (
+                        <div key={`${entry.ml}-${index}`} className="flex items-center justify-between text-xs p-2 bg-gray-50 rounded-lg">
+                          <span className="text-gray-700">{entry.ml}ml at {entry.timestamp}</span>
+                          <button
+                            onClick={() => handleUndoSpecificWater(index)}
+                            className="text-red-500 hover:text-red-600 hover:bg-red-50 px-2 py-0.5 rounded transition-colors"
+                            title="Remove specific entry"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
 
           {/* 3. Diet Log Section */}
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-50 w-full">
-            <div className="flex justify-between items-center mb-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
               <div className="flex items-center gap-2">
                 <Coffee className="text-blue-500" size={20} />
                 <h2 className="text-xl font-semibold text-gray-900">Diet Log</h2>
               </div>
+              <button
+                type="button"
+                onClick={() => setShowCustomForm(true)}
+                className="bg-blue-50 hover:bg-blue-100 text-blue-600 px-4 py-2 rounded-2xl text-sm font-medium transition-colors"
+              >
+                + Custom Meal
+              </button>
             </div>
             
             <form onSubmit={handleSearch} className="flex gap-3 mb-6">
@@ -633,7 +755,11 @@ function JourneyContent() {
                 <input 
                   type="text" 
                   value={query} 
-                  onChange={(e) => { setQuery(e.target.value); if (!e.target.value) setSearchResults(defaultFoods); }} 
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setQuery(value);
+                    if (!value) setSearchResults([...defaultFoods, ...customMeals]);
+                  }} 
                   placeholder="Search food to add..." 
                   className="w-full bg-gray-50 border border-gray-100 rounded-2xl py-3 px-4 focus:outline-none focus:border-blue-500 text-sm text-gray-900"
                 />
@@ -643,12 +769,91 @@ function JourneyContent() {
               </button>
             </form>
 
+            {showCustomForm && (
+              <div className="bg-blue-50 p-5 rounded-3xl border border-blue-100 mb-6">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
+                  <div>
+                    <h3 className="text-lg font-semibold text-blue-900">Add Custom Meal</h3>
+                    <p className="text-sm text-blue-600">Create a meal and optionally save it permanently for fast reuse.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowCustomForm(false)}
+                    className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                  >
+                    Close
+                  </button>
+                </div>
+                <form onSubmit={handleSaveCustomMeal} className="grid gap-4 md:grid-cols-2">
+                  <label className="space-y-2 text-sm text-gray-700">
+                    Meal name
+                    <input
+                      type="text"
+                      value={mealName}
+                      onChange={(e) => setMealName(e.target.value)}
+                      className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-2 text-sm outline-none focus:border-blue-500"
+                    />
+                  </label>
+                  <label className="space-y-2 text-sm text-gray-700">
+                    Calories
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={calories}
+                      onChange={(e) => setCalories(e.target.value)}
+                      className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-2 text-sm outline-none focus:border-blue-500"
+                    />
+                  </label>
+                  <label className="space-y-2 text-sm text-gray-700">
+                    Protein (g)
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      value={protein}
+                      onChange={(e) => setProtein(e.target.value)}
+                      className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-2 text-sm outline-none focus:border-blue-500"
+                    />
+                  </label>
+                  <label className="space-y-2 text-sm text-gray-700">
+                    Fat (g)
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      value={fat}
+                      onChange={(e) => setFat(e.target.value)}
+                      className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-2 text-sm outline-none focus:border-blue-500"
+                    />
+                  </label>
+                  <label className="flex items-center gap-2 md:col-span-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={savePermanent}
+                      onChange={(e) => setSavePermanent(e.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    Save this meal permanently for quick use later
+                  </label>
+                  <button
+                    type="submit"
+                    className="md:col-span-2 bg-blue-500 hover:bg-blue-600 text-white px-4 py-3 rounded-2xl text-sm font-medium transition-colors"
+                  >
+                    {savePermanent ? "Save permanently & add to today's log" : "Add custom meal to today's log"}
+                  </button>
+                </form>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6 max-h-60 overflow-y-auto p-1">
               {searchResults.map((food, index) => (
                 <div key={index} className="flex justify-between items-center p-3 bg-gray-50 rounded-2xl border border-gray-50 hover:bg-gray-100 transition-colors">
                   <div>
                     <p className="font-medium text-gray-900 text-sm">{food.name}</p>
-                    <p className="text-xs text-gray-500">{food.calories} kcal • P: {food.protein}g</p>
+                    <p className="text-xs text-gray-500">
+                      {food.calories} kcal • P: {formatMacroValue(Number(food.protein))}g • F: {formatMacroValue(Number(food.fat))}g
+                    </p>
                   </div>
                   <button onClick={() => handleLogMeal(food)} className="text-blue-500 hover:text-blue-600 font-medium text-sm flex items-center gap-1">
                     <Plus size={16} /> Add
@@ -676,7 +881,7 @@ function JourneyContent() {
                       <tr key={index} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                         <td className="py-3 font-medium text-gray-900">{meal.name}</td>
                         <td className="py-3">{meal.calories} kcal</td>
-                        <td className="py-3">{meal.protein}g</td>
+                        <td className="py-3">{formatMacroValue(Number(meal.protein))}g</td>
                         <td className="py-3">
                           <button onClick={() => handleRemoveMeal(index)} className="text-gray-400 hover:text-red-500 transition-colors">
                             <Trash2 size={16} />
