@@ -7,10 +7,11 @@ import { Flame, Plus, Target, ChevronDown, Scale, AlertCircle, TrendingUp, BarCh
 import Link from "next/link";
 import StrengthChart from "@/components/charts/StrengthChart";
 import GoalChart from "@/components/charts/GoalChart";
-import { getExerciseTrackingType, formatExerciseValue, formatMacroValue, roundToOneDecimal } from "@/utils/oneRM";
+import { getExerciseTrackingType, formatExerciseValue, formatMacroValue, roundToOneDecimal, formatLiters } from "@/utils/oneRM";
+import { computeGoldilocksScores } from "@/lib/scoring";
 
 export default function Dashboard() {
-  const TEST_MODE = false; // set to true for rapid testing
+  const TEST_MODE = true; // set to true for rapid testing
   const [activePlan, setActivePlan] = useState<string | null>(null);
   const [userName, setUserName] = useState("User");
   const [userEmail, setUserEmail] = useState("");
@@ -28,7 +29,6 @@ export default function Dashboard() {
   const [lastWaterAmount, setLastWaterAmount] = useState<number | null>(null);
   const [sleepLogs, setSleepLogs] = useState<{ [key: string]: { hours: number; quality: string } }>({});
   const [sleepTarget, setSleepTarget] = useState(8);
-  const [showHistoryPanel, setShowHistoryPanel] = useState(false);
   const [dateRange, setDateRange] = useState<'7days' | 'all'>('7days');
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [customTargets, setCustomTargets] = useState<any>(null);
@@ -96,9 +96,10 @@ export default function Dashboard() {
       sleep = JSON.parse(localStorage.getItem(`${email}_${plan}_sleepLogs`) || "{}");
       sleepTargetVal = currentPlan.sleepTarget || 8;
 
-      const todayStr = new Date().toDateString();
-      const storedWater = localStorage.getItem(`${email}_${plan}_water_${todayStr}`);
-      waterVal = storedWater ? parseInt(storedWater) : 0;
+      // Read water intake - check both formats for compatibility
+      // New format: waterIntake JSON object (Journey page)
+      const waterIntakeObj = JSON.parse(localStorage.getItem(`${email}_${plan}_waterIntake`) || "{}");
+      waterVal = waterIntakeObj[new Date().toISOString().split('T')[0]] || 0;
 
       const storedCustom = localStorage.getItem(`${email}_${plan}_customTargets`);
       if (storedCustom) {
@@ -205,8 +206,8 @@ export default function Dashboard() {
       const proposedWater = Math.round(targetHydration + 250);
 
       const aiMsg = isAhead
-        ? `Ahead of schedule by ${absDiff.toFixed(1)}kg!\n\nGreat gains! Make sure protein intake is high (1g/lb) and progressive overload is driving the growth — not just calorie excess.`
-        : `Behind schedule by ${absDiff.toFixed(1)}kg.\n\nIncrease your caloric surplus by 100–200 kcal/day and focus on progressive overload.`;
+        ? `Ahead of schedule by ${Math.round(absDiff)}kg!\n\nGreat gains! Make sure protein intake is high (1g/lb) and progressive overload is driving the growth — not just calorie excess.`
+        : `Behind schedule by ${Math.round(absDiff)}kg.\n\nIncrease your caloric surplus by 100–200 kcal/day and focus on progressive overload.`;
 
       try {
         const response = await fetch("/api/gemini/analyze-routine", {
@@ -231,8 +232,8 @@ export default function Dashboard() {
               experienceLevel: "Intermediate",
               medicalContext: "None",
               injuries: isAhead
-                ? `Ahead of schedule by ${absDiff.toFixed(1)}kg! Great gains! Make sure protein intake is high (1g/lb) and progressive overload is driving the growth — not just calorie excess.`
-                : `Behind schedule by ${absDiff.toFixed(1)}kg. Increase your caloric surplus by 100–200 kcal/day and focus on progressive overload.`
+                ? `Ahead of schedule by ${Math.round(absDiff)}kg! Great gains! Make sure protein intake is high (1g/lb) and progressive overload is driving the growth — not just calorie excess.`
+                : `Behind schedule by ${Math.round(absDiff)}kg. Increase your caloric surplus by 100–200 kcal/day and focus on progressive overload.`
             }
           }),
         });
@@ -241,8 +242,8 @@ export default function Dashboard() {
           const parsed = await response.json();
           setAiRecommendation({
             onTrack: false,
-            diff: diff,
-            absDiff: absDiff,
+            diff: Math.round(diff),
+            absDiff: Math.round(absDiff),
             weight: weightVal,
             message: aiMsg,
             targets: {
@@ -330,19 +331,45 @@ export default function Dashboard() {
 
   const handleDrinkWater = (amount: number) => {
     if (!userEmail || !activePlan) return;
-    const todayStr = new Date().toDateString();
+    const todayStr = new Date().toISOString().split('T')[0];
     setLastWaterAmount(loggedWater);
-    const newAmount = loggedWater + amount;
+    // Read existing water intake from the new format
+    const waterIntakeObj = JSON.parse(localStorage.getItem(`${userEmail}_${activePlan}_waterIntake`) || "{}");
+    const current = waterIntakeObj[todayStr] || 0;
+    const newAmount = current + amount;
+    waterIntakeObj[todayStr] = newAmount;
+    localStorage.setItem(`${userEmail}_${activePlan}_waterIntake`, JSON.stringify(waterIntakeObj));
     setLoggedWater(newAmount);
-    localStorage.setItem(`${userEmail}_${activePlan}_water_${todayStr}`, newAmount.toString());
   };
 
   const handleUndoWater = () => {
     if (!userEmail || !activePlan || lastWaterAmount === null) return;
-    const todayStr = new Date().toDateString();
+    const todayStr = new Date().toISOString().split('T')[0];
+    // Read existing water intake from the new format
+    const waterIntakeObj = JSON.parse(localStorage.getItem(`${userEmail}_${activePlan}_waterIntake`) || "{}");
+    waterIntakeObj[todayStr] = lastWaterAmount;
+    localStorage.setItem(`${userEmail}_${activePlan}_waterIntake`, JSON.stringify(waterIntakeObj));
     setLoggedWater(lastWaterAmount);
-    localStorage.setItem(`${userEmail}_${activePlan}_water_${todayStr}`, lastWaterAmount.toString());
     setLastWaterAmount(null);
+  };
+
+  const handleUndoLastMeal = () => {
+    if (!userEmail || !activePlan) return;
+    const todayStr = new Date().toISOString().split('T')[0];
+    const allLogged = JSON.parse(localStorage.getItem(`${userEmail}_${activePlan}_loggedMeals`) || "[]");
+    // Find last meal index for today (search from end)
+    let removeIdx = -1;
+    for (let i = allLogged.length - 1; i >= 0; i--) {
+      const d = new Date(allLogged[i].date).toISOString().split('T')[0];
+      if (d === todayStr) { removeIdx = i; break; }
+    }
+    if (removeIdx === -1) return; // nothing to undo
+    allLogged.splice(removeIdx, 1);
+    localStorage.setItem(`${userEmail}_${activePlan}_loggedMeals`, JSON.stringify(allLogged));
+    // Update UI state for today's meals
+    const todayMeals = allLogged.filter((m: any) => new Date(m.date).toISOString().split('T')[0] === todayStr);
+    setLoggedMeals(todayMeals);
+    alert('Removed last logged meal for today.');
   };
 
   // --- Dates & Filtering ---
@@ -379,6 +406,7 @@ export default function Dashboard() {
   }
 
   const currentActualWeight = weeklyWeights.length > 0 ? weeklyWeights[weeklyWeights.length - 1].weight : startWeight;
+  // Use centralized protein target (Day Analysis standard via lib)
   let targetProtein = proteinTarget(currentActualWeight, (currentPlan?.goal as Goal) || "maintenance");
   if (customTargets?.protein) {
     targetProtein = customTargets.protein;
@@ -415,20 +443,30 @@ export default function Dashboard() {
   // Sleep warning/penalty logic:
   let sleepHoursDeduction = 0;
   let sleepQualityDeduction = 0;
-  const todaySleep = sleepLogs[todayStr];
-  const currentSleep = todaySleep ? todaySleep.hours : 0;
-  const currentSleepQuality = todaySleep ? todaySleep.quality : "Good";
+  const todaySleepEntry = sleepLogs[todayStr];
+  let currentSleep = 0;
+  let currentSleepQuality = "Good";
+  if (Array.isArray(todaySleepEntry)) {
+    currentSleep = todaySleepEntry.reduce((s: number, e: any) => s + (e.hours || 0), 0);
+    const qualities: Record<string, number> = {};
+    todaySleepEntry.forEach((e: any) => { if (e.quality) qualities[e.quality] = (qualities[e.quality] || 0) + 1; });
+    const most = Object.keys(qualities).reduce((a, b) => qualities[a] > qualities[b] ? a : b, "Good");
+    currentSleepQuality = most || "Good";
+  } else if (todaySleepEntry && typeof todaySleepEntry.hours === 'number') {
+    currentSleep = todaySleepEntry.hours;
+    currentSleepQuality = todaySleepEntry.quality || "Good";
+  }
 
-  if (!todaySleep) {
+  if (!todaySleepEntry) {
     warningsList.push({ metric: "Sleep", msg: "No sleep logged for today yet.", severity: "warning" });
     sleepHoursDeduction = 30; // maximum deduction if not logged
   } else {
     const sleepDiff = Math.abs(currentSleep - sleepTargetVal);
-    if (sleepDiff > 0 && sleepDiff <= 1.5) {
-      warningsList.push({ metric: "Sleep", msg: `Sleep hours off by ${sleepDiff.toFixed(1)}h (within +1.5h warning zone). No hour penalty applied.`, severity: "warning" });
-    } else if (sleepDiff > 1.5) {
-      sleepHoursDeduction = (sleepDiff - 1.5) * 4;
-      warningsList.push({ metric: "Sleep", msg: `Sleep hours off by ${sleepDiff.toFixed(1)}h. Hour penalty applied.`, severity: "penalty" });
+    if (sleepDiff > 0 && sleepDiff <= 1) {
+      warningsList.push({ metric: "Sleep", msg: `Sleep hours off by ${Math.round(sleepDiff)}h (within ±1h warning zone). No penalty applied.`, severity: "warning" });
+    } else if (sleepDiff > 1) {
+      sleepHoursDeduction = (sleepDiff - 1) * 4;
+      warningsList.push({ metric: "Sleep", msg: `Sleep hours off by ${Math.round(sleepDiff)}h. Penalty applied.`, severity: "penalty" });
     }
 
     // Quality check
@@ -445,86 +483,95 @@ export default function Dashboard() {
       warningsList.push({ metric: "Sleep Quality", msg: "Sleep quality rated Poor (-10 penalty points).", severity: "penalty" });
     }
   }
-  const sleepPoints = Math.max(0, 30 - (sleepHoursDeduction + sleepQualityDeduction));
-  const sleepScore = (sleepPoints / 30) * 100;
 
+  // Build warnings list from differences (used for UI messages)
   // Calories warning/penalty logic:
-  let calDeduction = 0;
   const calDiff = Math.abs(currentCalories - targetCalories);
-  if (calDiff > 0 && calDiff <= 150) {
-    warningsList.push({ metric: "Calories", msg: `Calories off by ${calDiff} kcal (within ±150 kcal warning zone). No penalty applied.`, severity: "warning" });
-  } else if (calDiff > 150) {
-    calDeduction = ((calDiff - 150) / 100) * 2;
+  if (calDiff > 0 && calDiff <= 300) {
+    warningsList.push({ metric: "Calories", msg: `Calories off by ${calDiff} kcal (within ±300 kcal warning zone). No penalty applied.`, severity: "warning" });
+  } else if (calDiff > 300) {
     warningsList.push({ metric: "Calories", msg: `Calories off by ${calDiff} kcal. Penalty applied.`, severity: "penalty" });
   }
-  const calPoints = Math.max(0, 25 - calDeduction);
-  const calScore = (calPoints / 25) * 100;
 
   // Protein warning/penalty logic:
-  let protDeduction = 0;
   const protDiff = Math.abs(currentProtein - targetProtein);
-  if (protDiff > 0 && protDiff <= 10) {
-    warningsList.push({ metric: "Protein", msg: `Protein off by ${protDiff}g (within ±10g warning zone). No penalty applied.`, severity: "warning" });
-  } else if (protDiff > 10) {
-    protDeduction = ((protDiff - 10) / 5) * 1.5;
+  if (protDiff > 0 && protDiff <= 15) {
+    warningsList.push({ metric: "Protein", msg: `Protein off by ${protDiff}g (within ±15g warning zone). No penalty applied.`, severity: "warning" });
+  } else if (protDiff > 15) {
     warningsList.push({ metric: "Protein", msg: `Protein off by ${protDiff}g. Penalty applied.`, severity: "penalty" });
   }
-  const protPoints = Math.max(0, 15 - protDeduction);
-  const protScore = (protPoints / 15) * 100;
 
   // Workout sets warning/penalty logic:
-  let workoutDeduction = 0;
   const setsLoggedToday = exerciseLogs.filter(l => l.date === todayStr).length;
   const workoutDiff = Math.abs(setsLoggedToday - 6);
   if (workoutDiff > 0 && workoutDiff <= 4) {
     warningsList.push({ metric: "Workout Sets", msg: `Workout sets off by ${workoutDiff} (within ±4 sets warning zone). No penalty applied.`, severity: "warning" });
   } else if (workoutDiff > 4) {
-    workoutDeduction = (workoutDiff - 4) * 3;
     warningsList.push({ metric: "Workout Sets", msg: `Workout sets off by ${workoutDiff} sets. Penalty applied.`, severity: "penalty" });
   }
-  const workoutPoints = Math.max(0, 12 - workoutDeduction);
-  const workoutScore = (workoutPoints / 12) * 100;
 
   // Hydration warning/penalty logic:
-  let hydDeduction = 0;
   const hydDiff = Math.abs(loggedWater - targetHydration);
   if (hydDiff > 0 && hydDiff <= 500) {
     warningsList.push({ metric: "Hydration", msg: `Hydration off by ${hydDiff}ml (within ±500ml warning zone). No penalty applied.`, severity: "warning" });
   } else if (hydDiff > 500) {
-    hydDeduction = ((hydDiff - 500) / 500) * 1;
     warningsList.push({ metric: "Hydration", msg: `Hydration off by ${hydDiff}ml. Penalty applied.`, severity: "penalty" });
   }
-  const hydPoints = Math.max(0, 10 - hydDeduction);
-  const hydScore = (hydPoints / 10) * 100;
 
   // Fats warning/penalty logic:
-  let fatDeduction = 0;
   const fatDiff = Math.abs(currentFats - targetFats);
-  if (fatDiff > 0 && fatDiff <= 30) {
-    warningsList.push({ metric: "Fats", msg: `Fats off by ${fatDiff}g (within ±30g warning zone). No penalty applied.`, severity: "warning" });
-  } else if (fatDiff > 30) {
-    fatDeduction = ((fatDiff - 30) / 5) * 1;
+  if (fatDiff > 0 && fatDiff <= 15) {
+    warningsList.push({ metric: "Fats", msg: `Fats off by ${fatDiff}g (within ±15g warning zone). No penalty applied.`, severity: "warning" });
+  } else if (fatDiff > 15) {
     warningsList.push({ metric: "Fats", msg: `Fats off by ${fatDiff}g. Penalty applied.`, severity: "penalty" });
   }
-  const fatPoints = Math.max(0, 8 - fatDeduction);
-  const fatScore = (fatPoints / 8) * 100;
 
-  // Overall Score (Tally out of exactly 100 points)
-  const overallProgress = Math.round(
-    (sleepScore * 0.30) +
-    (calScore * 0.25) +
-    (protScore * 0.15) +
-    (workoutScore * 0.12) +
-    (hydScore * 0.10) +
-    (fatScore * 0.08)
-  );
+  // If everything is unlogged (all zeros), show 0% instead of treating
+  // the lack of data as a perfect score. Otherwise compute normally.
+  const allMetricsZero =
+    currentSleep === 0 &&
+    currentCalories === 0 &&
+    currentProtein === 0 &&
+    setsLoggedToday === 0 &&
+    loggedWater === 0 &&
+    currentFats === 0;
+  // Use centralized scoring helper so Dashboard and Journey match exactly
+  const scoringResult = computeGoldilocksScores({
+    diet: { calories: currentCalories, protein: currentProtein, fat: currentFats },
+    sleepHours: currentSleep,
+    sleepTarget: sleepTargetVal,
+    sleepQuality: currentSleepQuality,
+    sleepLogged: !!todaySleepEntry,
+    setsLogged: setsLoggedToday,
+    waterIntake: loggedWater,
+    targetHydration,
+    targetCalories,
+    targetProtein,
+    targetFats,
+  });
 
-  const sleepDeducted = Math.max(0, Math.round((sleepHoursDeduction + sleepQualityDeduction) * 10) / 10);
-  const calDeducted = Math.max(0, Math.round(calDeduction * 10) / 10);
-  const protDeducted = Math.max(0, Math.round(protDeduction * 10) / 10);
-  const workoutDeducted = Math.max(0, Math.round(workoutDeduction * 10) / 10);
-  const hydDeducted = Math.max(0, Math.round(hydDeduction * 10) / 10);
-  const fatDeducted = Math.max(0, Math.round(fatDeduction * 10) / 10);
+  const overallProgress = allMetricsZero ? 0 : scoringResult.overallScore;
+
+  // Map helper outputs to variables used by UI components
+  const sleepPoints = scoringResult.sleepPoints;
+  const sleepScore = scoringResult.sleepScore;
+  const calPoints = scoringResult.calPoints;
+  const calScore = scoringResult.calScore;
+  const protPoints = scoringResult.proteinPoints;
+  const protScore = scoringResult.proteinScore;
+  const workoutPoints = scoringResult.workoutPoints;
+  const workoutScore = scoringResult.workoutScore;
+  const hydPoints = scoringResult.waterPoints;
+  const hydScore = scoringResult.waterScore;
+  const fatPoints = scoringResult.fatPoints;
+  const fatScore = scoringResult.fatScore;
+
+  const sleepDeducted = Math.max(0, Math.round((30 - sleepPoints) * 10) / 10);
+  const calDeducted = Math.max(0, Math.round((25 - calPoints) * 10) / 10);
+  const protDeducted = Math.max(0, Math.round((15 - protPoints) * 10) / 10);
+  const workoutDeducted = Math.max(0, Math.round((12 - workoutPoints) * 10) / 10);
+  const hydDeducted = Math.max(0, Math.round((10 - hydPoints) * 10) / 10);
+  const fatDeducted = Math.max(0, Math.round((8 - fatPoints) * 10) / 10);
 
   // --- Weigh-in Logic & Status ---
   let daysSinceStart = 0;
@@ -537,7 +584,7 @@ export default function Dashboard() {
     daysSinceStart = Math.floor(diffTime / (1000 * 60 * 60 * 24));
 
     const lastWeighInDate = weeklyWeights.length > 0 ? new Date(weeklyWeights[weeklyWeights.length - 1].date) : startObj;
-    const intervalMs = TEST_MODE ? 3 * 1000 : 7 * 24 * 60 * 60 * 1000; // 3 seconds or 7 days
+    const intervalMs = TEST_MODE ? 5 * 1000 : 7 * 24 * 60 * 60 * 1000; // 5 seconds or 7 days (test mode uses 5s)
     const diffSinceLastMs = Math.abs(todayObj.getTime() - lastWeighInDate.getTime());
 
     if (diffSinceLastMs >= intervalMs) {
@@ -559,19 +606,19 @@ export default function Dashboard() {
   const isLosing = startWeight > goalWeight;
   if (isLosing) {
     if (weightDiffFromExpected > 1) {
-      progressStatus = `Behind schedule (+${weightDiffFromExpected.toFixed(1)}kg)`;
+      progressStatus = `Behind schedule (+${Math.round(weightDiffFromExpected)}kg)`;
       statusColor = "text-red-500";
     } else if (weightDiffFromExpected < -1) {
-      progressStatus = `Ahead of schedule! (${Math.abs(weightDiffFromExpected).toFixed(1)}kg ahead)`;
+      progressStatus = `Ahead of schedule! (${Math.round(Math.abs(weightDiffFromExpected))}kg ahead)`;
       statusColor = "text-blue-500";
     }
   } else {
     // Gaining
     if (weightDiffFromExpected < -1) {
-      progressStatus = `Behind schedule (${Math.abs(weightDiffFromExpected).toFixed(1)}kg)`;
+      progressStatus = `Behind schedule (${Math.round(Math.abs(weightDiffFromExpected))}kg)`;
       statusColor = "text-red-500";
     } else if (weightDiffFromExpected > 1) {
-      progressStatus = `Ahead of schedule! (+${weightDiffFromExpected.toFixed(1)}kg ahead)`;
+      progressStatus = `Ahead of schedule! (+${Math.round(weightDiffFromExpected)}kg ahead)`;
       statusColor = "text-blue-500";
     }
   }
@@ -588,13 +635,13 @@ export default function Dashboard() {
       weightSuggestion = 'Keep up your current routine. Consistency is key!';
     } else if ((isLosing && weightDiffFromExpected > 1) || (!isLosing && weightDiffFromExpected < -1)) {
       weightAlertType = 'behind';
-      weightAlertMsg = `Behind schedule by ${Math.abs(weightDiffFromExpected).toFixed(1)}kg.`;
+      weightAlertMsg = `Behind schedule by ${Math.round(Math.abs(weightDiffFromExpected))}kg.`;
       weightSuggestion = isLosing
         ? 'Try a mild calorie cut of 100–200 kcal/day and add 1 extra cardio session per week.'
         : 'Increase your caloric surplus by 100–200 kcal/day and focus on progressive overload.';
     } else {
       weightAlertType = 'fast';
-      weightAlertMsg = `Ahead of schedule by ${Math.abs(weightDiffFromExpected).toFixed(1)}kg!`;
+      weightAlertMsg = `Ahead of schedule by ${Math.round(Math.abs(weightDiffFromExpected))}kg!`;
       weightSuggestion = isLosing
         ? 'You\'re losing weight fast. Consider adding resistance training to preserve muscle and improve body composition instead of just cutting calories.'
         : 'Great gains! Make sure protein intake is high (1g/lb) and progressive overload is driving the growth — not just calorie excess.';
@@ -692,29 +739,10 @@ export default function Dashboard() {
               </select>
               <ChevronDown className="absolute right-3 top-2.5 text-gray-400 pointer-events-none" size={16} />
             </div>
-            {/* History selector */}
-            <button
-              onClick={() => setShowHistoryPanel(!showHistoryPanel)}
-              className="inline-flex items-center gap-1 bg-gray-100 hover:bg-gray-200 text-gray-800 px-3 py-2 rounded-full text-sm"
-            >
-              History {showHistoryPanel ? "▲" : "▼"}
-            </button>
           </div>
         )}
       </header>
-      {showHistoryPanel && (
-        <div className="mt-4 bg-gray-50 p-3 rounded-2xl flex items-center gap-4">
-          <span className="text-sm font-medium text-gray-600">Show:</span>
-          <select
-            value={dateRange}
-            onChange={e => setDateRange(e.target.value as typeof dateRange)}
-            className="bg-white border border-gray-300 rounded-md px-2 py-1 text-sm"
-          >
-            <option value="7days">Last 7 days</option>
-            <option value="all">All time</option>
-          </select>
-        </div>
-      )}
+
 
       {!activePlan ? (
         <div className="bg-white p-12 rounded-3xl shadow-sm border border-gray-50 text-center space-y-6 w-full">
@@ -743,8 +771,8 @@ export default function Dashboard() {
                 </div>
                 <div>
                   <h3 className="text-lg font-bold">Incredible Achievement! Plan Completed! 🏆</h3>
-                  <p className="text-sm text-blue-100 mt-1">
-                    You have logged all weeks and achieved a weight of {currentActualWeight.toFixed(2)}kg ({isWithinGoal ? "Within targeted range!" : "Dedicated run!"}).
+                    <p className="text-sm text-blue-100 mt-1">
+                    You have logged all weeks and achieved a weight of {Math.round(currentActualWeight)}kg ({isWithinGoal ? "Within targeted range!" : "Dedicated run!"}).
                   </p>
                 </div>
               </div>
@@ -824,9 +852,9 @@ export default function Dashboard() {
                 <span className="text-xs text-gray-500 flex items-center justify-center gap-1"><Dumbbell size={12} /> Workout (12%)</span>
                 <p className="font-bold text-gray-900 mt-1">{setsLoggedToday} / 6 sets</p>
               </div>
-              <div className="text-center">
+                <div className="text-center">
                 <span className="text-xs text-gray-500 flex items-center justify-center gap-1"><Droplets size={12} /> Hydration (10%)</span>
-                <p className="font-bold text-gray-900 mt-1">{(loggedWater / 1000).toFixed(1)} / {(targetHydration / 1000).toFixed(1)}L</p>
+                <p className="font-bold text-gray-900 mt-1">{formatLiters(loggedWater)} / {formatLiters(targetHydration)}L</p>
               </div>
               <div className="text-center">
                 <span className="text-xs text-gray-500 flex items-center justify-center gap-1"><Coffee size={12} /> Fats (8%)</span>
@@ -938,7 +966,7 @@ export default function Dashboard() {
                         </div>
                         <div>
                           <p className="text-xs font-bold text-gray-900">Hydration (Max 10pts)</p>
-                          <p className="text-[11px] text-gray-500">Target: {(targetHydration / 1000).toFixed(1)}L | Got: {(loggedWater / 1000).toFixed(1)}L</p>
+                          <p className="text-[11px] text-gray-500">Target: {formatLiters(targetHydration)}L | Got: {formatLiters(loggedWater)}L</p>
                         </div>
                       </div>
                       <div className="text-right">
@@ -1055,6 +1083,7 @@ export default function Dashboard() {
                     <button onClick={() => handleDrinkWater(250)} className="text-xs bg-blue-50 text-blue-500 px-2 py-1 rounded-md hover:bg-blue-100">+250ml</button>
                     <button onClick={() => handleDrinkWater(500)} className="text-xs bg-blue-50 text-blue-500 px-2 py-1 rounded-md hover:bg-blue-100">+500ml</button>
                     <button onClick={handleUndoWater} disabled={lastWaterAmount === null} className="text-xs bg-gray-50 text-gray-700 px-2 py-1 rounded-md hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed">Undo</button>
+                    <button onClick={handleUndoLastMeal} className="text-xs bg-gray-50 text-gray-700 px-2 py-1 rounded-md hover:bg-gray-100">Undo Meal</button>
                   </div>
                 </div>
               </div>
@@ -1100,13 +1129,13 @@ export default function Dashboard() {
               <h3 className="text-lg font-semibold text-blue-500 mb-4">Weight Progress</h3>
               <div className="space-y-4">
                 <div className="flex flex-col">
-                  <div className="flex items-center justify-between text-sm mb-1">
+                    <div className="flex items-center justify-between text-sm mb-1">
                     <span className="text-gray-500">Current</span>
-                    <span className="font-medium text-gray-900">{currentActualWeight.toFixed(2)} kg</span>
+                    <span className="font-medium text-gray-900">{Math.round(currentActualWeight)} kg</span>
                   </div>
                   <div className="flex items-center justify-between text-sm mb-2">
                     <span className="text-gray-500">Goal</span>
-                    <span className="font-medium text-blue-500">{goalWeight.toFixed(2)} kg</span>
+                    <span className="font-medium text-blue-500">{Math.round(goalWeight)} kg</span>
                   </div>
                   <ProgressBar label="" progress={workoutScore} colorClass="bg-blue-500" showText={false} />
                 </div>

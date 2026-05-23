@@ -5,6 +5,7 @@ import ProgressBar from "@/components/ProgressBar";
 import { Calendar as CalendarIcon, Trash2, Plus, Search, Loader2 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { formatMacroValue } from "@/utils/oneRM";
 
 interface FoodItem {
   name: string;
@@ -172,13 +173,6 @@ function DietContent() {
     fat: acc.fat + meal.fat,
     carbs: acc.carbs + meal.carbs,
   }), { calories: 0, protein: 0, fat: 0, carbs: 0 });
-
-  const formatMacroValue = (value: number) => {
-    const formatted = value.toFixed(2);
-    if (formatted.endsWith(".00")) return `${parseInt(formatted, 10)}.0`;
-    if (formatted.endsWith("0")) return formatted.slice(0, -1);
-    return formatted;
-  };
 
   return (
     <div className="space-y-6 p-6 bg-white min-h-screen">

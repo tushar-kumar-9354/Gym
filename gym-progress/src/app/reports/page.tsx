@@ -85,22 +85,27 @@ export default function ReportsExport() {
         return Math.round((base + goalBonus) * multiplier);
       };
 
-      const body = {
+      const body: any = {
         activePlanName: activePlan,
-        startWeight: activePlanObject?.weight ?? null,
-        goalWeight: activePlanObject?.goalWeight ?? null,
-        planDuration: activePlanObject?.duration ?? null,
-        targetCalories: activePlanObject?.targetCalories ?? null,
-        targetProtein: activePlanObject ? proteinTarget(activePlanObject.weight, activePlanObject.goal) : null,
-        targetFats: activePlanObject ? Math.round((activePlanObject.goalWeight * 2.20462) * 0.4 * 10) / 10 : null,
-        targetHydration: activePlanObject ? computeWaterTarget(activePlanObject.weight, activePlanObject.goal, activePlanObject.activityLevel) : null,
-        goal: activePlanObject?.goal ?? null,
-        activityLevel: activePlanObject?.activityLevel ?? null,
-        currentWeight: dailyReports.length > 0 ? dailyReports[dailyReports.length - 1].weight ?? activePlanObject?.weight ?? null : activePlanObject?.weight ?? null,
-        dailyReports,
-        userProfile,
-        frequentFoods,
       };
+      if (activePlanObject) {
+        if (typeof activePlanObject.weight === 'number') body.startWeight = activePlanObject.weight;
+        if (typeof activePlanObject.goalWeight === 'number') body.goalWeight = activePlanObject.goalWeight;
+        if (typeof activePlanObject.duration === 'number') body.planDuration = activePlanObject.duration;
+        if (typeof activePlanObject.targetCalories === 'number') body.targetCalories = activePlanObject.targetCalories;
+        body.targetProtein = proteinTarget(activePlanObject.weight, activePlanObject.goal);
+        if (typeof activePlanObject.goalWeight === 'number') body.targetFats = Math.round((activePlanObject.goalWeight * 2.20462) * 0.4 * 10) / 10;
+        body.targetHydration = computeWaterTarget(activePlanObject.weight, activePlanObject.goal, activePlanObject.activityLevel);
+        body.goal = activePlanObject.goal;
+        body.activityLevel = activePlanObject.activityLevel;
+      }
+      if (dailyReports.length > 0) {
+        const last = dailyReports[dailyReports.length - 1];
+        if (typeof last.weight === 'number') body.currentWeight = last.weight;
+      }
+      body.dailyReports = dailyReports;
+      body.userProfile = userProfile;
+      body.frequentFoods = frequentFoods;
       const res = await fetch("/api/gemini/analyze-weekly-secondary", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -120,7 +125,7 @@ export default function ReportsExport() {
   const generateAITextReport = () => {
     const totalDays = dailyReports.length;
     const avgScore = totalDays > 0 ? Math.round(dailyReports.reduce((acc, d) => acc + d.score, 0) / totalDays) : 0;
-    const avgSleep = totalDays > 0 ? (dailyReports.reduce((acc, d) => acc + (d.sleepHours || 0), 0) / totalDays).toFixed(1) : "0";
+    const avgSleep = totalDays > 0 ? Math.round(dailyReports.reduce((acc, d) => acc + (d.sleepHours || 0), 0) / totalDays).toString() : "0";
     const avgCalories = totalDays > 0 ? Math.round(dailyReports.reduce((acc, d) => acc + d.calories, 0) / totalDays) : 0;
 
     let report = `GYMPROGRESS+ PREMIUM HEALTH & FITNESS REPORT\n`;

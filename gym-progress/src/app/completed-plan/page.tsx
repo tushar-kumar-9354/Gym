@@ -29,6 +29,7 @@ import {
   Legend as ChartLegend
 } from "chart.js";
 import { Line } from "react-chartjs-2";
+import { formatLiters } from "@/utils/oneRM";
 
 ChartJS.register(
   CategoryScale,
@@ -124,12 +125,16 @@ export default function CompletedPlan() {
     const sleepQualities: Record<string, number> = {};
     sleepKeys.forEach(k => {
       const log = sleepLogs[k];
-      totalSleep += log.hours || 0;
-      if (log.quality) {
-        sleepQualities[log.quality] = (sleepQualities[log.quality] || 0) + 1;
+      if (Array.isArray(log)) {
+        log.forEach((e: any) => { totalSleep += e.hours || 0; if (e.quality) sleepQualities[e.quality] = (sleepQualities[e.quality] || 0) + 1; });
+      } else {
+        totalSleep += log.hours || 0;
+        if (log.quality) {
+          sleepQualities[log.quality] = (sleepQualities[log.quality] || 0) + 1;
+        }
       }
     });
-    const avgSleep = sleepKeys.length > 0 ? (totalSleep / sleepKeys.length).toFixed(1) : "8.0";
+    const avgSleep = sleepKeys.length > 0 ? Math.round(totalSleep / sleepKeys.length).toString() : "8";
     const favoriteSleepQuality = Object.keys(sleepQualities).reduce((a, b) => 
       sleepQualities[a] > sleepQualities[b] ? a : b, "Good"
     );
@@ -349,17 +354,17 @@ export default function CompletedPlan() {
             <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-xs">
               <Weight size={20} className="text-blue-500 mx-auto mb-2" />
               <span className="text-[11px] text-gray-500 uppercase tracking-wider block font-semibold">Start Weight</span>
-              <span className="text-lg md:text-xl font-bold block mt-1 text-gray-900">{planData.startWeight.toFixed(2)} kg</span>
+              <span className="text-lg md:text-xl font-bold block mt-1 text-gray-900">{Math.round(planData.startWeight)} kg</span>
             </div>
             <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-xs">
               <Weight size={20} className="text-yellow-500 mx-auto mb-2" />
               <span className="text-[11px] text-gray-500 uppercase tracking-wider block font-semibold">Goal Weight</span>
-              <span className="text-lg md:text-xl font-bold block mt-1 text-gray-900">{planData.goalWeight.toFixed(2)} kg</span>
+              <span className="text-lg md:text-xl font-bold block mt-1 text-gray-900">{Math.round(planData.goalWeight)} kg</span>
             </div>
             <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-xs">
               <Weight size={20} className="text-cyan-500 mx-auto mb-2" />
               <span className="text-[11px] text-gray-500 uppercase tracking-wider block font-semibold">Current Weight</span>
-              <span className="text-lg md:text-xl font-bold block mt-1 text-gray-900">{planData.currentWeight.toFixed(2)} kg</span>
+              <span className="text-lg md:text-xl font-bold block mt-1 text-gray-900">{Math.round(planData.currentWeight)} kg</span>
             </div>
             <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-xs flex flex-col justify-center items-center">
               {planData.success ? (
@@ -449,7 +454,7 @@ export default function CompletedPlan() {
                 </div>
                 <div className="flex justify-between items-center text-xs">
                   <span className="text-gray-500 font-medium">Highest 1-Rep Max</span>
-                  <span className="font-bold text-gray-900 text-sm">{planData.highest1RM.toFixed(2)} kg</span>
+                  <span className="font-bold text-gray-900 text-sm">{Math.round(planData.highest1RM)} kg</span>
                 </div>
                 <div className="flex justify-between items-center text-xs">
                   <span className="text-gray-500 font-medium">1RM Exercise</span>
@@ -473,7 +478,7 @@ export default function CompletedPlan() {
                 </div>
                 <div className="flex justify-between items-center text-xs">
                   <span className="text-gray-500 font-medium">Daily Water Avg</span>
-                  <span className="font-bold text-gray-900 text-sm">{(planData.avgWater / 1000).toFixed(1)}L / day</span>
+                  <span className="font-bold text-gray-900 text-sm">{formatLiters(Number(planData.avgWater))}L / day</span>
                 </div>
                 <div className="flex justify-between items-center text-xs">
                   <span className="text-gray-500 font-medium">Goal Type Focus</span>
@@ -481,7 +486,7 @@ export default function CompletedPlan() {
                 </div>
                 <div className="flex justify-between items-center text-xs">
                   <span className="text-gray-500 font-medium">Net Weight Shift</span>
-                  <span className="font-bold text-gray-900 text-sm">{planData.totalWeightChange.toFixed(2)} kg</span>
+                  <span className="font-bold text-gray-900 text-sm">{Math.round(planData.totalWeightChange)} kg</span>
                 </div>
               </div>
             </div>

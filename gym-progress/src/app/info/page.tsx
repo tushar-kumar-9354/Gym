@@ -94,7 +94,7 @@ export default function YourMetrics() {
     const weightNum = parseFloat(w);
     const heightNum = parseFloat(h) / 100;
     if (weightNum && heightNum) {
-      const bmiVal = (weightNum / (heightNum * heightNum)).toFixed(1);
+      const bmiVal = Math.round(weightNum / (heightNum * heightNum)).toString();
       setBmi(bmiVal);
       const val = parseFloat(bmiVal);
       if (val < 18.5) setBmiStatus("Underweight");
@@ -220,7 +220,7 @@ export default function YourMetrics() {
             </div>
             <div className="mt-1">
               <span className="text-2xl font-black text-gray-900">
-                {lbm ? lbm.toFixed(1) : "--"}
+                {lbm ? Math.round(lbm) : "--"}
               </span>
               <span className="text-xs text-gray-500 font-bold ml-1">kg</span>
             </div>
@@ -237,7 +237,7 @@ export default function YourMetrics() {
             </div>
             <div className="mt-1">
               <span className="text-2xl font-black text-gray-900">
-                {bodyFat ? `${bodyFat.toFixed(1)}%` : "--"}
+                {bodyFat ? `${Math.round(bodyFat)}%` : "--"}
               </span>
             </div>
             <p className="text-[10px] text-blue-950/60 mt-2 font-medium leading-relaxed">

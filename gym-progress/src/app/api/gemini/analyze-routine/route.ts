@@ -108,7 +108,7 @@ Preferred Schedule Constraints:
 Weight Journey: ${startWeight}kg → ${goalWeight}kg over ${planDuration} months
 Activity Level: ${activityLevel}
 Daily Nutrition Targets: ${targetCalories} kcal | Protein ${targetProtein}g | Fat ${targetFats}g
-Daily Water Target: ${waterTargetMl}ml (${(waterTargetMl / 1000).toFixed(1)}L) — scientifically computed
+Daily Water Target: ${waterTargetMl}ml (${Math.round(waterTargetMl / 1000)}L) — scientifically computed
 Sleep Target: ${sleepTarget} hours per night
 ${profileStr}
 ${foodContext}

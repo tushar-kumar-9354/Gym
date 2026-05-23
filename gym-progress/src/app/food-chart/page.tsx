@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Search, Loader2, Plus } from "lucide-react";
+import { formatMacroValue } from "@/utils/oneRM";
+import { Search, Loader2 } from "lucide-react";
 
 interface FoodItem {
   name: string;
@@ -77,7 +78,7 @@ export default function FoodChart() {
     }
   };
 
-  const formatMacroValue = (value: number) => Number(value || 0).toFixed(1);
+  
 
   const getNutrientValue = (food: any, name: string) => {
     const nutrient = food.foodNutrients?.find((n: any) => n.nutrientName.toLowerCase().includes(name.toLowerCase()));
@@ -138,12 +139,7 @@ export default function FoodChart() {
           <h1 className="text-3xl font-bold text-blue-500">Food Chart</h1>
           <p className="text-gray-500 mt-1">Search food details dynamically using the USDA database.</p>
         </div>
-        <button 
-          onClick={() => setShowCustomForm(true)}
-          className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-medium transition-colors shadow-sm"
-        >
-          <Plus size={18} /> Custom Meal
-        </button>
+        {/* Custom Meal button removed per request */}
       </header>
 
       {/* Custom Meal Form */}

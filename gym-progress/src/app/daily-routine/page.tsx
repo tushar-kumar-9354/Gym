@@ -9,6 +9,7 @@ import {
 import Link from "next/link";
 import { Line } from "react-chartjs-2";
 import { proteinTarget, Goal } from "@/lib/protein";
+import { formatLiters } from "@/utils/oneRM";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -458,7 +459,7 @@ export default function DailyRoutine() {
                 <div className="bg-cyan-50 p-3 rounded-2xl border border-cyan-100 text-center">
                   <Droplets size={14} className="text-cyan-500 mx-auto mb-1" />
                   <span className="text-xs text-gray-500 block">Water Target</span>
-                  <span className="font-bold text-gray-900 text-sm block">{(waterTargetMl / 1000).toFixed(1)}L</span>
+                  <span className="font-bold text-gray-900 text-sm block">{formatLiters(waterTargetMl)}L</span>
                 </div>
                 <div className="bg-purple-50 p-3 rounded-2xl border border-purple-100 text-center">
                   <Moon size={14} className="text-purple-500 mx-auto mb-1" />
@@ -623,7 +624,7 @@ export default function DailyRoutine() {
                             : JSON.stringify(aiRoutine.waterGuidance)}
                       </p>
                       <p className="text-xs text-cyan-500 mt-2 font-medium">
-                        Daily target: <strong>{(waterTargetMl / 1000).toFixed(1)}L</strong> ({waterTargetMl}ml) — scientifically computed
+                        Daily target: <strong>{formatLiters(waterTargetMl)}L</strong> ({waterTargetMl}ml) — scientifically computed
                       </p>
                     </div>
                   </div>

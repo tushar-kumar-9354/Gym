@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import { Activity, Mail, ArrowRight, ShieldCheck, User, Lock, Sparkles, AlertCircle } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 
@@ -10,7 +10,7 @@ interface RegisteredUser {
   password?: string;
 }
 
-export default function Login() {
+function LoginContent() {
   const searchParams = useSearchParams();
   const reason = searchParams.get("reason");
 
@@ -352,5 +352,13 @@ export default function Login() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function Login() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-gray-50"><div className="text-gray-500">Loading...</div></div>}>
+      <LoginContent />
+    </Suspense>
   );
 }

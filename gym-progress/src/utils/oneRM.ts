@@ -10,7 +10,12 @@ export function roundToOneDecimal(value: number): number {
 }
 
 export function formatMacroValue(value: number): string {
-  return roundToOneDecimal(value).toFixed(1);
+  return Math.round(value).toString();
+}
+
+export function formatLiters(ml: number): string {
+  if (!ml && ml !== 0) return "0";
+  return Math.round(ml / 1000).toString(); // integer liters
 }
 
 export type ExerciseTrackingType = "1RM" | "Reps" | "Time";
@@ -42,6 +47,6 @@ export function formatExerciseValue(value: number, type: ExerciseTrackingType): 
   if (type === "Reps") {
     return `${value} reps`;
   }
-  return `${value.toFixed(2)} kg`;
+  return `${Math.round(value)} kg`;
 }
 

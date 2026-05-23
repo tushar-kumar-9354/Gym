@@ -3,9 +3,10 @@
 import React, { useState, useEffect, Suspense } from "react";
 import { Calendar as CalendarIcon, CheckCircle2, Trash2, Plus, Search, Loader2, ArrowRight, Dumbbell, Coffee, Droplet, Scale, PieChart, Check, Moon } from "lucide-react";
 import ProgressBar from "@/components/ProgressBar";
+import { computeGoldilocksScores } from "@/lib/scoring";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { getExerciseTrackingType, formatExerciseValue, calculateOneRM, roundToOneDecimal } from "@/utils/oneRM";
+import { getExerciseTrackingType, formatExerciseValue, calculateOneRM, roundToOneDecimal, formatLiters, formatMacroValue } from "@/utils/oneRM";
 
 interface FoodItem {
   name: string;
@@ -56,11 +57,14 @@ function JourneyContent() {
   // Water States
   const [waterIntake, setWaterIntake] = useState(0);
   const [waterHistory, setWaterHistory] = useState<{ ml: number; timestamp: string }[]>([]);
+  const [customWaterInput, setCustomWaterInput] = useState("");
 
   // Sleep States
   const [sleepHours, setSleepHours] = useState<number | "">("");
   const [sleepQuality, setSleepQuality] = useState("Good");
   const [savedSleep, setSavedSleep] = useState<{ hours: number; quality: string } | null>(null);
+  const [sleepEntries, setSleepEntries] = useState<{ hours: number; quality: string }[]>([]);
+  const [lastDeletedSleep, setLastDeletedSleep] = useState<{ entry: any; index: number } | null>(null);
 
   const [startWeight, setStartWeight] = useState(80);
   const [goalWeight, setGoalWeight] = useState(75);
@@ -146,8 +150,74 @@ function JourneyContent() {
     // Load sleep
     const sleepLogs = JSON.parse(localStorage.getItem(`${email}_${plan}_sleepLogs`) || "{}");
     const daySlp = sleepLogs[date];
-    if (daySlp) { setSavedSleep(daySlp); setSleepHours(daySlp.hours); setSleepQuality(daySlp.quality); }
-    else { setSavedSleep(null); setSleepHours(""); setSleepQuality("Good"); }
+    if (daySlp) {
+      // Support both single-entry ({hours,quality}) and multiple entries ([{...},...])
+      if (Array.isArray(daySlp)) {
+        const total = daySlp.reduce((s: number, e: any) => s + (e.hours || 0), 0);
+        const qualities: Record<string, number> = {};
+        daySlp.forEach((e: any) => { if (e.quality) qualities[e.quality] = (qualities[e.quality] || 0) + 1; });
+        const most = Object.keys(qualities).length ? Object.keys(qualities).reduce((a, b) => qualities[a] > qualities[b] ? a : b) : "Good";
+        setSavedSleep({ hours: total, quality: most });
+        setSleepHours(total);
+        setSleepQuality(most);
+        setSleepEntries(daySlp);
+      } else {
+        setSavedSleep(daySlp);
+        setSleepHours(daySlp.hours);
+        setSleepQuality(daySlp.quality);
+        setSleepEntries([daySlp]);
+      }
+    } else { setSavedSleep(null); setSleepHours(""); setSleepQuality("Good"); }
+  };
+
+  const handleDeleteSleepEntry = (index: number) => {
+    if (!userEmail || !activePlan) return;
+    const sleepLogs = JSON.parse(localStorage.getItem(`${userEmail}_${activePlan}_sleepLogs`) || "{}");
+    const entries = Array.isArray(sleepLogs[selectedDate]) ? [...sleepLogs[selectedDate]] : (sleepLogs[selectedDate] ? [sleepLogs[selectedDate]] : []);
+    if (index < 0 || index >= entries.length) return;
+    const [removed] = entries.splice(index, 1);
+    if (entries.length === 0) {
+      delete sleepLogs[selectedDate];
+    } else {
+      sleepLogs[selectedDate] = entries;
+    }
+    localStorage.setItem(`${userEmail}_${activePlan}_sleepLogs`, JSON.stringify(sleepLogs));
+    setSleepEntries(entries);
+    // recompute savedSleep
+    if (entries.length > 0) {
+      const total = entries.reduce((s: number, e: any) => s + (e.hours || 0), 0);
+      const qualities: Record<string, number> = {};
+      entries.forEach((e: any) => { if (e.quality) qualities[e.quality] = (qualities[e.quality] || 0) + 1; });
+      const most = Object.keys(qualities).length ? Object.keys(qualities).reduce((a, b) => qualities[a] > qualities[b] ? a : b) : "Good";
+      setSavedSleep({ hours: total, quality: most });
+      setSleepHours(total);
+      setSleepQuality(most);
+    } else {
+      setSavedSleep(null);
+      setSleepHours("");
+      setSleepQuality("Good");
+    }
+    setLastDeletedSleep({ entry: removed, index });
+  };
+
+  const handleUndoDeleteSleep = () => {
+    if (!userEmail || !activePlan || !lastDeletedSleep) return;
+    const sleepLogs = JSON.parse(localStorage.getItem(`${userEmail}_${activePlan}_sleepLogs`) || "{}");
+    const entries = Array.isArray(sleepLogs[selectedDate]) ? [...sleepLogs[selectedDate]] : (sleepLogs[selectedDate] ? [sleepLogs[selectedDate]] : []);
+    const idx = Math.min(lastDeletedSleep.index, entries.length);
+    entries.splice(idx, 0, lastDeletedSleep.entry);
+    sleepLogs[selectedDate] = entries;
+    localStorage.setItem(`${userEmail}_${activePlan}_sleepLogs`, JSON.stringify(sleepLogs));
+    setSleepEntries(entries);
+    // recompute savedSleep
+    const total = entries.reduce((s: number, e: any) => s + (e.hours || 0), 0);
+    const qualities: Record<string, number> = {};
+    entries.forEach((e: any) => { if (e.quality) qualities[e.quality] = (qualities[e.quality] || 0) + 1; });
+    const most = Object.keys(qualities).length ? Object.keys(qualities).reduce((a, b) => qualities[a] > qualities[b] ? a : b) : "Good";
+    setSavedSleep({ hours: total, quality: most });
+    setSleepHours(total);
+    setSleepQuality(most);
+    setLastDeletedSleep(null);
   };
 
   // Diet Handlers
@@ -370,6 +440,7 @@ function JourneyContent() {
   };
 
   // Water Handlers
+
   // Dynamic scientific water target formula
   const baseHydration = currentWeight * 35;
   const gainGoalHydration = /muscle|bulk|gain/i.test(goal);
@@ -386,6 +457,15 @@ function JourneyContent() {
     setWaterIntake(current + ml);
     // Track water intake history for undo functionality
     setWaterHistory(prev => [...prev, { ml, timestamp: new Date().toLocaleTimeString() }]);
+    setCustomWaterInput("");
+  };
+  const handleClearAllWater = () => {
+    if (!userEmail || !activePlan) return;
+    const water = JSON.parse(localStorage.getItem(`${userEmail}_${activePlan}_waterIntake`) || "{}");
+    water[selectedDate] = 0;
+    localStorage.setItem(`${userEmail}_${activePlan}_waterIntake`, JSON.stringify(water));
+    setWaterIntake(0);
+    setWaterHistory([]);
   };
   const handleUndoWater = () => {
     if (waterHistory.length === 0) return;
@@ -415,9 +495,33 @@ function JourneyContent() {
     if (!userEmail || !activePlan || sleepHours === "") return;
     const sleepLogs = JSON.parse(localStorage.getItem(`${userEmail}_${activePlan}_sleepLogs`) || "{}");
     const entry = { hours: Number(sleepHours), quality: sleepQuality };
-    sleepLogs[selectedDate] = entry;
+    const existing = sleepLogs[selectedDate];
+    if (existing) {
+      if (Array.isArray(existing)) {
+        existing.push(entry);
+        sleepLogs[selectedDate] = existing;
+      } else {
+        sleepLogs[selectedDate] = [existing, entry];
+      }
+    } else {
+      sleepLogs[selectedDate] = entry;
+    }
     localStorage.setItem(`${userEmail}_${activePlan}_sleepLogs`, JSON.stringify(sleepLogs));
-    setSavedSleep(entry);
+    // Update saved view to reflect potential aggregation
+    const daySlp = sleepLogs[selectedDate];
+    if (Array.isArray(daySlp)) {
+      const total = daySlp.reduce((s: number, e: any) => s + (e.hours || 0), 0);
+      const qualities: Record<string, number> = {};
+      daySlp.forEach((e: any) => { if (e.quality) qualities[e.quality] = (qualities[e.quality] || 0) + 1; });
+      const most = Object.keys(qualities).length ? Object.keys(qualities).reduce((a, b) => qualities[a] > qualities[b] ? a : b) : "Good";
+      setSavedSleep({ hours: total, quality: most });
+      setSleepHours(total);
+      setSleepQuality(most);
+    } else {
+      setSavedSleep(daySlp);
+      setSleepHours(daySlp.hours);
+      setSleepQuality(daySlp.quality);
+    }
     alert("Sleep logged!");
   };
 
@@ -428,10 +532,6 @@ function JourneyContent() {
     carbs: acc.carbs + meal.carbs,
     fat: acc.fat + meal.fat,
   }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
-
-  const formatMacroValue = (value: number) => {
-    return roundToOneDecimal(value).toFixed(1);
-  };
 
   const displayProtein = formatMacroValue(currentDiet.protein);
   const displayFat = formatMacroValue(currentDiet.fat);
@@ -446,42 +546,55 @@ function JourneyContent() {
   const targetProtein = Math.round(currentWeight * 1.8);
   const targetFats = Math.round(goalWeightLbs * 0.4);
 
-  // --- Dynamic Scores for Journey Day Completion using Goldilocks Zone Penalty Rule ---
-  
-  // Sleep (30% - Max 30 points. Deduct 2 points for every 1 hour under or over target)
-  const sleepHoursVal = savedSleep ? savedSleep.hours : 0;
-  const sleepPoints = Math.max(0, 30 - Math.abs(sleepHoursVal - sleepTarget) * 2);
-  const sleepScore = (sleepPoints / 30) * 100;
+  // --- Dynamic Scores for Journey Day Completion using centralized Goldilocks helper ---
+  const scoring = computeGoldilocksScores({
+    diet: { calories: currentDiet.calories, protein: currentDiet.protein, fat: currentDiet.fat },
+    sleepHours: savedSleep ? savedSleep.hours : 0,
+    sleepTarget,
+    setsLogged: exerciseLogs.length,
+    waterIntake,
+    targetHydration: waterTarget,
+    targetCalories,
+    targetProtein,
+    targetFats,
+  });
 
-  // Calories (25% - Max 25 points. Deduct 1 point for every 100 calories under or over target)
-  const calPoints = Math.max(0, 25 - (Math.abs(currentDiet.calories - targetCalories) / 100) * 1);
-  const calScore = (calPoints / 25) * 100;
-
-  // Protein (15% - Max 15 points. Deduct 1 point for every 5g under or over target)
-  const proteinPoints = Math.max(0, 15 - (Math.abs(currentDiet.protein - targetProtein) / 5) * 1);
-  const proteinScore = (proteinPoints / 15) * 100;
-
-  // Workout (12% - Max 12 points. Deduct 2 points for every 1 set under or over target of 6 sets)
-  const exercisePoints = Math.max(0, 12 - Math.abs(exerciseLogs.length - 6) * 2);
-  const exerciseScore = (exercisePoints / 12) * 100;
-
-  // Hydration (10% - Max 10 points. Deduct 1 point for every 250ml under or over target)
-  const waterPoints = Math.max(0, 10 - (Math.abs(waterIntake - waterTarget) / 250) * 1);
-  const waterScore = (waterPoints / 10) * 100;
+  const sleepPoints = scoring.sleepPoints;
+  const sleepScore = scoring.sleepScore;
+  const calPoints = scoring.calPoints;
+  const calScore = scoring.calScore;
+  const proteinPoints = scoring.proteinPoints;
+  const proteinScore = scoring.proteinScore;
+  const exercisePoints = scoring.workoutPoints;
+  const exerciseScore = scoring.workoutScore;
+  const waterPoints = scoring.waterPoints;
+  const waterScore = scoring.waterScore;
 
   // Fats (8% - Max 8 points. Deduct 1 point for every 5g under or over target)
   const fatPoints = Math.max(0, 8 - (Math.abs(currentDiet.fat - targetFats) / 5) * 1);
   const fatScore = (fatPoints / 8) * 100;
 
+  // If the user hasn't logged anything (all zero), show 0% instead
+  // of treating empty logs as a perfect score.
+  const allMetricsZero =
+    (savedSleep?.hours ?? 0) === 0 &&
+    currentDiet.calories === 0 &&
+    currentDiet.protein === 0 &&
+    exerciseLogs.length === 0 &&
+    waterIntake === 0 &&
+    currentDiet.fat === 0;
+
   // Overall Score (Tally out of exactly 100 points)
-  const dayCompletionScore = Math.round(
-    (sleepScore * 0.30) +
-    (calScore * 0.25) +
-    (proteinScore * 0.15) +
-    (exerciseScore * 0.12) +
-    (waterScore * 0.10) +
-    (fatScore * 0.08)
-  );
+  const dayCompletionScore = allMetricsZero
+    ? 0
+    : Math.round(
+        (sleepScore * 0.30) +
+        (calScore * 0.25) +
+        (proteinScore * 0.15) +
+        (exerciseScore * 0.12) +
+        (waterScore * 0.10) +
+        (fatScore * 0.08)
+      );
 
   const filteredDisplayLogs = exerciseLogs.filter(log => {
     if (filter === "All") return true;
@@ -613,7 +726,7 @@ function JourneyContent() {
                   { label: "Calories (25%)", val: `${currentDiet.calories} / ${targetCalories} kcal`, pct: calScore, color: "bg-orange-400" },
                   { label: "Protein (15%)", val: `${displayProtein} / ${targetProtein}g`, pct: proteinScore, color: "bg-blue-400" },
                   { label: "Workout (12%)", val: exerciseLogs.length > 0 ? `${exerciseLogs.length} sets done` : "Not done", pct: exerciseScore, color: "bg-green-400" },
-                  { label: "Hydration (10%)", val: `${(waterIntake/1000).toFixed(1)} / ${(waterTarget/1000).toFixed(1)}L`, pct: waterScore, color: "bg-cyan-400" },
+                  { label: "Hydration (10%)", val: `${formatLiters(waterIntake)} / ${formatLiters(waterTarget)}L`, pct: waterScore, color: "bg-cyan-400" },
                   { label: "Fats (8%)", val: `${displayFat} / ${targetFats}g`, pct: fatScore, color: "bg-purple-400" },
                 ].map(({ label, val, pct, color }) => (
                   <div key={label}>
@@ -636,7 +749,26 @@ function JourneyContent() {
                 <h2 className="text-xl font-semibold text-gray-900">Sleep & Recovery</h2>
               </div>
               <div className="space-y-3">
-                {savedSleep && (
+                {sleepEntries && sleepEntries.length > 0 ? (
+                  <div className="space-y-2">
+                    <div className="text-sm text-gray-600">Sleep logs for this day:</div>
+                    <div className="space-y-2">
+                      {sleepEntries.map((e, idx) => (
+                        <div key={idx} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+                          <div className="text-sm font-medium">{idx + 1}. {e.hours}h — {e.quality}</div>
+                          <div className="flex items-center gap-2">
+                            <button onClick={() => handleDeleteSleepEntry(idx)} className="text-red-500 hover:text-red-600 px-2 py-1 rounded">Delete</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {lastDeletedSleep && (
+                      <div className="flex items-center gap-2">
+                        <button onClick={handleUndoDeleteSleep} className="text-xs bg-gray-50 text-gray-700 px-2 py-1 rounded-md hover:bg-gray-100">Undo Last Delete</button>
+                      </div>
+                    )}
+                  </div>
+                ) : savedSleep ? (
                   <div className={`p-3 rounded-2xl text-sm font-medium ${
                     savedSleep.hours >= sleepTarget - 1 && savedSleep.hours <= sleepTarget + 1
                       ? "bg-green-50 text-green-700 border border-green-100"
@@ -647,7 +779,7 @@ function JourneyContent() {
                       ? " ✅ On track"
                       : ` ⚠️ Target is ${sleepTarget}h`}
                   </div>
-                )}
+                ) : null}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-medium text-gray-500 mb-1">Hours Slept</label>
@@ -680,13 +812,13 @@ function JourneyContent() {
             </div>
 
             <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-50">
-              <div className="flex justify-between items-center mb-4">
-                <div className="flex items-center gap-2">
-                  <Droplet className="text-blue-500" size={20} />
-                  <h2 className="text-xl font-semibold text-gray-900">Water Intake</h2>
+                <div className="flex justify-between items-center mb-4">
+                  <div className="flex items-center gap-2">
+                    <Droplet className="text-blue-500" size={20} />
+                    <h2 className="text-xl font-semibold text-gray-900">Water Intake</h2>
+                  </div>
+                  <span className="text-sm font-medium text-blue-500">Target: {formatLiters(waterTarget)}L</span>
                 </div>
-                <span className="text-sm font-medium text-blue-500">Target: {(waterTarget / 1000).toFixed(1)}L</span>
-              </div>
               <div className="space-y-4">
                 <div>
                   <div className="flex justify-between text-sm mb-1">
@@ -696,24 +828,53 @@ function JourneyContent() {
                   <ProgressBar label="" progress={waterScore} colorClass="bg-blue-400" showText={false} />
                 </div>
                 <div className="text-center text-lg font-bold text-gray-900 py-2">
-                  {(waterIntake / 1000).toFixed(1)}L <span className="text-gray-500 text-sm font-normal">consumed</span>
+                  {formatLiters(waterIntake)}L <span className="text-gray-500 text-sm font-normal">consumed</span>
                 </div>
                 <div className="grid grid-cols-3 gap-3">
                   <button onClick={() => handleAddWater(250)} className="bg-blue-50 hover:bg-blue-100 text-blue-500 py-2.5 rounded-2xl text-sm font-medium transition-colors border border-blue-50">+250ml</button>
                   <button onClick={() => handleAddWater(500)} className="bg-blue-50 hover:bg-blue-100 text-blue-500 py-2.5 rounded-2xl text-sm font-medium transition-colors border border-blue-50">+500ml</button>
                   <button onClick={() => handleAddWater(1000)} className="bg-blue-50 hover:bg-blue-100 text-blue-500 py-2.5 rounded-2xl text-sm font-medium transition-colors border border-blue-50">+1L</button>
                 </div>
+                <div className="flex gap-2 items-center">
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="Enter ml..."
+                    value={customWaterInput}
+                    onChange={(e) => setCustomWaterInput(e.target.value)}
+                    className="flex-1 bg-gray-50 border border-gray-100 rounded-2xl py-2 px-3 text-sm focus:outline-none focus:border-blue-500"
+                  />
+                  <button
+                    onClick={() => {
+                      const ml = parseInt(customWaterInput);
+                      if (!isNaN(ml) && ml > 0) {
+                        handleAddWater(ml);
+                      }
+                    }}
+                    className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-2xl text-sm font-medium transition-colors"
+                  >
+                    Add
+                  </button>
+                </div>
+                <div className="flex justify-between items-center pt-3 border-t border-gray-100">
+                  <button
+                    onClick={handleClearAllWater}
+                    className="text-xs font-semibold text-red-600 hover:text-red-700 hover:bg-red-50 px-3 py-2 rounded-lg transition-colors flex items-center gap-1"
+                  >
+                    <Trash2 size={14} /> Clear All Water for Today
+                  </button>
+                  {waterHistory.length > 0 && (
+                    <button
+                      onClick={handleUndoWater}
+                      className="text-xs font-semibold text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-3 py-2 rounded-lg transition-colors"
+                    >
+                      Undo Last
+                    </button>
+                  )}
+                </div>
                 {waterHistory.length > 0 && (
-                  <div className="space-y-3 pt-4 border-t border-gray-100">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium text-gray-500">Water History</span>
-                      <button
-                        onClick={handleUndoWater}
-                        className="text-xs font-semibold text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-3 py-1 rounded-lg transition-colors"
-                      >
-                        Undo Last
-                      </button>
-                    </div>
+                  <div className="space-y-2 pt-3 border-t border-gray-100">
+                    <span className="text-xs font-medium text-gray-500">Water History</span>
                     <div className="space-y-2 max-h-32 overflow-y-auto">
                       {waterHistory.map((entry, index) => (
                         <div key={`${entry.ml}-${index}`} className="flex items-center justify-between text-xs p-2 bg-gray-50 rounded-lg">

@@ -43,11 +43,14 @@ function ExerciseContent() {
 
     if (email && plan) {
       const savedLogs = JSON.parse(localStorage.getItem(`${email}_${plan}_exerciseLogs`) || "[]");
-      // Normalize: ensure date is YYYY-MM-DD, add setNumber if missing
+      // Normalize: ensure date is YYYY-MM-DD, add setNumber if missing, and provide id/oneRM
       const normalizedLogs = savedLogs.map((l: any) => ({
+        id: l.id ?? `${l.date ?? ''}_${l.exercise ?? l.exerciseName ?? ''}_${l.timestamp ?? Date.now()}`,
         ...l,
+        exercise: l.exercise ?? l.exerciseName,
         date: typeof l.date === "string" && l.date.length > 10 ? l.date.split('T')[0] : l.date,
         setNumber: l.setNumber ?? 1,
+        oneRM: l.oneRM ?? (l.reps && l.weight ? Math.round(calculateOneRM(parseFloat(l.weight), parseInt(l.reps)) * 10) / 10 : l.oneRM ?? 0),
       }));
       setLogs(normalizedLogs);
     }

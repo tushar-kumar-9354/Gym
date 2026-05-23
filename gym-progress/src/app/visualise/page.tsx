@@ -406,7 +406,14 @@ export default function Visualise() {
 
   // 8. Daily Score Trend (last 7 days from dailyReports)
   const scoreByDate: { [key: string]: number } = {};
-  dailyReports.forEach(r => { scoreByDate[r.date] = r.score; });
+  dailyReports.forEach(r => {
+    try {
+      const key = r && r.date ? new Date(r.date).toISOString().split('T')[0] : null;
+      if (key) scoreByDate[key] = typeof r.score === 'number' ? r.score : Number(r.score) || 0;
+    } catch (e) {
+      // ignore malformed dates
+    }
+  });
   const scoreTrendData = {
     labels: last7Days.map(d => new Date(d).toLocaleDateString('en-US', { weekday: 'short' })),
     datasets: [
@@ -425,7 +432,12 @@ export default function Visualise() {
     datasets: [
       {
         label: "Hours Slept",
-        data: last7Days.map(d => sleepLogs[d]?.hours ?? null),
+        data: last7Days.map(d => {
+          const s = sleepLogs[d];
+          if (!s) return null;
+          if (Array.isArray(s)) return s.reduce((sum: number, e: any) => sum + (e.hours || 0), 0);
+          return s.hours ?? null;
+        }),
         borderColor: "#a855f7",
         backgroundColor: "rgba(168,85,247,0.15)",
         borderWidth: 2,

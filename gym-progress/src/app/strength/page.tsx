@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import StrengthChart from "@/components/charts/StrengthChart";
-import { Plus, Target, Info, Sparkles, TrendingUp, Award, Activity, Trash2, Edit2, RotateCcw, Dumbbell } from "lucide-react";
+import { Plus, Target, Info, Sparkles, TrendingUp, Award, Activity, Edit2, RotateCcw, Dumbbell } from "lucide-react";
 import ProgressBar from "@/components/ProgressBar";
 import { calculateOneRM, getExerciseTrackingType, formatExerciseValue, ExerciseTrackingType } from "@/utils/oneRM";
 
@@ -30,9 +30,10 @@ export default function StrengthTracker() {
   const [activeTab, setActiveTab] = useState<string>("Chest");
   const [exercise, setExercise] = useState<string>("Bench Press");
   
-  const [weight, setWeight] = useState<string>("");
-  const [reps, setReps] = useState<string>("");
-  
+  const [trajectoryMode, setTrajectoryMode] = useState<'exercise' | 'bodypart'>('exercise');
+  const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
+  const [selectedDateFilter, setSelectedDateFilter] = useState<string | null>(null);
+
   const [userEmail, setUserEmail] = useState<string>("");
   const [activePlan, setActivePlan] = useState<string>("");
   const [logs, setLogs] = useState<ExerciseLog[]>([]);
@@ -42,34 +43,42 @@ export default function StrengthTracker() {
 
   // Initialize and load from localStorage
   useEffect(() => {
-    const email = localStorage.getItem("userEmail") || "demo@gymprogress.com";
+    const email = localStorage.getItem("userEmail") || "";
     setUserEmail(email);
-    
-    // Fetch active plan
-    const profile = localStorage.getItem(`${email}_profile`);
-    const planName = profile ? JSON.parse(profile).activePlanName || "Bulk" : "Bulk";
-    setActivePlan(planName);
 
-    // Fetch existing workout logs
-    const storedLogs = localStorage.getItem(`${email}_${planName}_exerciseLogs`);
-    if (storedLogs) {
+    const plan = localStorage.getItem(`${email}_activePlan`);
+    setActivePlan(plan);
+
+    if (email && plan) {
       try {
-        setLogs(JSON.parse(storedLogs));
+        const saved = JSON.parse(localStorage.getItem(`${email}_${plan}_exerciseLogs`) || "[]");
+        const normalized = (saved || []).map((l: any) => {
+          const exName = l.exerciseName ?? l.exercise ?? "";
+          const dateStr = typeof l.date === "string" && l.date.length > 10 ? l.date.split('T')[0] : l.date;
+          const ts = l.timestamp ?? Date.now();
+          const weight = typeof l.weight === 'number' ? l.weight : parseFloat(l.weight) || 0;
+          const reps = typeof l.reps === 'number' ? l.reps : parseInt(l.reps) || 0;
+          const oneRMVal = l.oneRM ?? (reps > 0 ? calculateOneRM(weight, reps) : (l.oneRM ?? 0));
+          return {
+            id: l.id ?? `${dateStr}_${exName}_${ts}`,
+            exerciseName: exName,
+            exercise: exName,
+            bodyPart: l.bodyPart ?? l.category ?? "",
+            weight,
+            reps,
+            date: dateStr,
+            timestamp: ts,
+            setNumber: l.setNumber ?? 1,
+            oneRM: Math.round(oneRMVal * 10) / 10,
+          } as ExerciseLog;
+        });
+        setLogs(normalized);
       } catch (e) {
         console.error("Error parsing exercise logs", e);
+        setLogs([]);
       }
     } else {
-      // Fallback default mock logs if none exist
-      const mockLogs: ExerciseLog[] = [
-        { id: "1", exerciseName: "Bench Press", bodyPart: "Chest", weight: 60, reps: 8, date: "May 5", timestamp: Date.now() - 15 * 24 * 60 * 60 * 1000 },
-        { id: "2", exerciseName: "Bench Press", bodyPart: "Chest", weight: 65, reps: 6, date: "May 10", timestamp: Date.now() - 10 * 24 * 60 * 60 * 1000 },
-        { id: "3", exerciseName: "Bench Press", bodyPart: "Chest", weight: 65, reps: 8, date: "May 15", timestamp: Date.now() - 5 * 24 * 60 * 60 * 1000 },
-        { id: "4", exerciseName: "Squat", bodyPart: "Legs", weight: 80, reps: 8, date: "May 5", timestamp: Date.now() - 15 * 24 * 60 * 60 * 1000 },
-        { id: "5", exerciseName: "Squat", bodyPart: "Legs", weight: 85, reps: 6, date: "May 10", timestamp: Date.now() - 10 * 24 * 60 * 60 * 1000 },
-        { id: "6", exerciseName: "Squat", bodyPart: "Legs", weight: 90, reps: 6, date: "May 15", timestamp: Date.now() - 5 * 24 * 60 * 60 * 1000 }
-      ];
-      localStorage.setItem(`${email}_${planName}_exerciseLogs`, JSON.stringify(mockLogs));
-      setLogs(mockLogs);
+      setLogs([]);
     }
 
     // Fetch strength goals
@@ -90,24 +99,75 @@ export default function StrengthTracker() {
     setExercise(firstEx);
   };
 
+  const handleSelectExercise = (exerciseName: string) => {
+    setExercise(exerciseName);
+  };
+
   // Filter logs for the active exercise
   const exerciseLogs = logs
-    .filter(log => log.exerciseName.toLowerCase() === exercise.toLowerCase())
+    .filter(log => ((log.exerciseName ?? log.exercise) || "").toLowerCase() === exercise.toLowerCase())
     .sort((a, b) => a.timestamp - b.timestamp);
 
   // Extract dates and 1RMs for Chart
   const trackingType = getExerciseTrackingType(exercise);
-  
-  const chartDates = exerciseLogs.map(log => log.date);
-  const chartValues = exerciseLogs.map(log => {
-    if (trackingType === "Time") {
-      return log.weight; // For time-based exercises, weight holds time in seconds
-    } else if (trackingType === "Reps") {
-      return log.reps; // For bodyweight reps exercises
+
+  // Chart data can be per-exercise or aggregated by body part
+  let chartDates: string[] = [];
+  let chartValues: number[] = [];
+
+  const formatDisplayDate = (d: string) => {
+    if (!d) return "";
+    const months = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
+    const parsed = new Date(d);
+    if (isNaN(parsed.getTime())) {
+      // try parsing strings like 'May 5' — append current year
+      const tryParse = new Date(`${d} ${new Date().getFullYear()}`);
+      if (!isNaN(tryParse.getTime())) {
+        const day = String(tryParse.getDate()).padStart(2, '0');
+        const mon = months[tryParse.getMonth()];
+        const yr = tryParse.getFullYear();
+        return `${day}/${mon}/${yr}`;
+      }
+      return d;
     }
-    // For strength exercises, compute the 1RM
-    return calculateOneRM(log.weight, log.reps);
-  });
+    const day = String(parsed.getDate()).padStart(2, '0');
+    const mon = months[parsed.getMonth()];
+    const yr = parsed.getFullYear();
+    return `${day}/${mon}/${yr}`;
+  };
+
+  if (trajectoryMode === 'exercise') {
+    chartDates = exerciseLogs.map(log => log.date);
+    chartValues = exerciseLogs.map(log => {
+      if (trackingType === "Time") return log.weight;
+      if (trackingType === "Reps") return log.reps;
+      return calculateOneRM(log.weight, log.reps);
+    });
+  } else {
+    // Aggregate all logs for the active body part by date (use max value per date)
+    const bodyLogs = logs
+      .filter(l => l.bodyPart === activeTab)
+      .sort((a, b) => a.timestamp - b.timestamp);
+
+    const dateMap: Record<string, { ts: number; value: number }[]> = {};
+    bodyLogs.forEach(l => {
+      const valType = getExerciseTrackingType(l.exerciseName);
+      const val = valType === 'Time' ? l.weight : valType === 'Reps' ? l.reps : calculateOneRM(l.weight, l.reps);
+      if (!dateMap[l.date]) dateMap[l.date] = [];
+      dateMap[l.date].push({ ts: l.timestamp, value: val });
+    });
+
+    const entries = Object.keys(dateMap).map(d => ({
+      date: d,
+      ts: Math.min(...dateMap[d].map(x => x.ts)),
+      value: Math.max(...dateMap[d].map(x => x.value)),
+    })).sort((a, b) => a.ts - b.ts);
+
+    chartDates = entries.map(e => e.date);
+    chartValues = entries.map(e => e.value);
+  }
+
+  const displayChartDates = chartDates.map(d => formatDisplayDate(d));
 
   // Calculate stats
   const currentBestValue = chartValues.length > 0 ? Math.max(...chartValues) : 0;
@@ -117,37 +177,7 @@ export default function StrengthTracker() {
   const goalDifference = Number((targetValue - currentBestValue).toFixed(2));
   const goalReached = currentBestValue >= targetValue;
 
-  // Add a new set log directly
-  const handleAddSet = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!weight || !reps) return;
 
-    const numWeight = parseFloat(weight);
-    const numReps = parseInt(reps);
-    if (isNaN(numWeight) || isNaN(numReps) || numWeight <= 0 || numReps <= 0) return;
-
-    const today = new Date();
-    const formattedDate = today.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-
-    const newLog: ExerciseLog = {
-      id: Math.random().toString(36).substring(2, 9),
-      exerciseName: exercise,
-      bodyPart: activeTab,
-      weight: numWeight,
-      reps: numReps,
-      date: formattedDate,
-      timestamp: Date.now(),
-      oneRM: calculateOneRM(numWeight, numReps)
-    };
-
-    const updatedLogs = [...logs, newLog];
-    setLogs(updatedLogs);
-    localStorage.setItem(`${userEmail}_${activePlan}_exerciseLogs`, JSON.stringify(updatedLogs));
-
-    // Clear input forms
-    setWeight("");
-    setReps("");
-  };
 
   // Save the custom strength goal
   const handleSaveGoal = () => {
@@ -160,13 +190,6 @@ export default function StrengthTracker() {
     localStorage.setItem(`${userEmail}_strength_goals`, JSON.stringify(updatedGoals));
     setIsEditingGoal(false);
     setNewGoal("");
-  };
-
-  // Delete a logged set
-  const handleDeleteLog = (id: string) => {
-    const updated = logs.filter(log => log.id !== id);
-    setLogs(updated);
-    localStorage.setItem(`${userEmail}_${activePlan}_exerciseLogs`, JSON.stringify(updated));
   };
 
   // 1RM Formulas (Only for 1RM Tracking types)
@@ -191,6 +214,79 @@ export default function StrengthTracker() {
     { name: "Hypertrophy", percentage: 75, reps: "10 reps", weight: Math.round(current1RM * 0.75) },
     { name: "Endurance", percentage: 65, reps: "15+ reps", weight: Math.round(current1RM * 0.65) }
   ];
+
+  // Group logs by date, collect body parts and exercises per date
+  const dateGroups = Object.values(
+    logs.reduce((acc: Record<string, any>, l) => {
+      const dateKey = l.date || 'unknown';
+      if (!acc[dateKey]) acc[dateKey] = { date: dateKey, bodyParts: new Set<string>(), exercises: {} };
+      const container = acc[dateKey];
+      if (l.bodyPart) container.bodyParts.add(l.bodyPart);
+      const exName = l.exerciseName || l.exercise || 'Unknown Exercise';
+      if (!container.exercises[exName]) container.exercises[exName] = [];
+      container.exercises[exName].push(l);
+      return acc;
+    }, {})
+  ).map((g: any) => {
+    // convert bodyParts set to sorted array and sort exercises' sets by timestamp
+    const bodyPartsArr = Array.from(g.bodyParts || []).sort();
+    const exercises = Object.keys(g.exercises).map((ex: string) => ({ name: ex, sets: g.exercises[ex].sort((a: any, b: any) => a.timestamp - b.timestamp) }));
+    return { date: g.date, bodyParts: bodyPartsArr, exercises };
+  }).sort((a: any, b: any) => {
+    // newest date first based on first set timestamp where available
+    const aTs = a.exercises.length ? a.exercises[0].sets[0].timestamp : 0;
+    const bTs = b.exercises.length ? b.exercises[0].sets[0].timestamp : 0;
+    return bTs - aTs;
+  });
+
+  // Build month and date options from logs
+  const monthNamesFull = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  const monthOptions = Array.from(new Set(logs.map(l => {
+    const parsed = new Date(l.date);
+    if (!isNaN(parsed.getTime())) return `${monthNamesFull[parsed.getMonth()]} ${parsed.getFullYear()}`;
+    // fallback: try parse 'May 5' style
+    const parts = String(l.date).split(' ');
+    if (parts.length >= 2) return `${parts[0]} ${new Date().getFullYear()}`;
+    return `Unknown`;
+  }))).filter(Boolean).sort((a: any, b: any) => {
+    // sort newest first by parsing year+month
+    const ad = new Date(a);
+    const bd = new Date(b);
+    return bd.getTime() - ad.getTime();
+  });
+
+  const dateOptionsForMonth = (monthLabel: string | null) => {
+    if (!monthLabel) return [];
+    const [mName, yStr] = monthLabel.split(' ');
+    const monthIndex = monthNamesFull.findIndex(x => x.toLowerCase() === mName.toLowerCase());
+    const year = parseInt(yStr) || new Date().getFullYear();
+    const dates = Array.from(new Set(logs.map(l => {
+      const d = new Date(l.date);
+      if (!isNaN(d.getTime()) && d.getMonth() === monthIndex && d.getFullYear() === year) return l.date;
+      // fallback: if stored as 'May 5'
+      if (String(l.date).toLowerCase().includes(mName.toLowerCase())) return l.date;
+      return null;
+    }).filter(Boolean)));
+    // sort newest first by timestamp
+    return dates.sort((a: any, b: any) => {
+      const ta = logs.find((x: any) => x.date === a)?.timestamp ?? 0;
+      const tb = logs.find((x: any) => x.date === b)?.timestamp ?? 0;
+      return tb - ta;
+    });
+  };
+
+  // Determine visible groups based on filters (selected date > selected month > last 3 days)
+  const visibleGroups = (() => {
+    if (selectedDateFilter) return dateGroups.filter((g: any) => g.date === selectedDateFilter);
+    if (selectedMonth) {
+      return dateGroups.filter((g: any) => {
+        const parsed = new Date(g.date);
+        if (!isNaN(parsed.getTime())) return `${monthNamesFull[parsed.getMonth()]} ${parsed.getFullYear()}` === selectedMonth;
+        return String(g.date).toLowerCase().includes((selectedMonth.split(' ')[0] || '').toLowerCase());
+      });
+    }
+    return dateGroups.slice(0, 3);
+  })();
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-12">
@@ -237,8 +333,10 @@ export default function StrengthTracker() {
             <div className="space-y-2">
               {DEFAULT_EXERCISES[activeTab]?.map((ex) => (
                 <button
+                  type="button"
                   key={ex}
-                  onClick={() => setExercise(ex)}
+                  onClick={() => handleSelectExercise(ex)}
+                  aria-pressed={exercise === ex}
                   className={`w-full text-left px-4 py-3 rounded-xl border text-sm font-medium transition-all ${
                     exercise === ex
                       ? "bg-blue-500/10 border-blue-500/50 text-blue-700 font-bold"
@@ -249,53 +347,6 @@ export default function StrengthTracker() {
                 </button>
               ))}
             </div>
-          </section>
-
-          {/* Quick Input Log Form */}
-          <section className="glass-panel p-6 rounded-2xl border border-border">
-            <h2 className="text-lg font-bold text-slate-950 mb-4 flex items-center gap-1.5">
-              <Plus className="text-blue-600" size={18} />
-              Log Set (Direct Entry)
-            </h2>
-            
-            <form onSubmit={handleAddSet} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1">
-                    {trackingType === "Time" ? "Hold Time (secs)" : "Weight (kg)"}
-                  </label>
-                  <input 
-                    type="number" 
-                    min="0.1"
-                    step="any"
-                    required
-                    value={weight}
-                    onChange={(e) => setWeight(e.target.value)}
-                    placeholder={trackingType === "Time" ? "e.g. 60" : "e.g. 80"}
-                    className="w-full bg-surface border border-border rounded-xl py-3 px-4 text-slate-900 focus:outline-none focus:border-blue-500 transition-colors"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1">Reps Performed</label>
-                  <input 
-                    type="number" 
-                    min="1"
-                    required
-                    value={reps}
-                    onChange={(e) => setReps(e.target.value)}
-                    placeholder="e.g. 8"
-                    className="w-full bg-surface border border-border rounded-xl py-3 px-4 text-slate-900 focus:outline-none focus:border-blue-500 transition-colors"
-                  />
-                </div>
-              </div>
-
-              <button 
-                type="submit"
-                className="w-full bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-xl transition-all font-semibold flex items-center justify-center gap-2 mt-2 shadow-[0_0_15px_rgba(59,130,246,0.2)]"
-              >
-                <Plus size={18} /> Add Lift Set
-              </button>
-            </form>
           </section>
 
           {/* Goal Tracker Card */}
@@ -393,18 +444,34 @@ export default function StrengthTracker() {
               <div>
                 <h2 className="text-lg font-bold text-slate-950 flex items-center gap-2">
                   <TrendingUp className="text-blue-600" size={20} />
-                  Performance Projection Chart
+                  Strength Trajectory
                 </h2>
-                <p className="text-xs text-slate-500 mt-0.5">Historical estimated progression values</p>
+                <p className="text-xs text-slate-500 mt-0.5">Track how your lifting progression evolves over time</p>
               </div>
-              <div className="text-xs font-bold px-3 py-1.5 bg-surface border border-border rounded-lg text-blue-600 tracking-wide">
-                {exercise}
+              <div className="flex items-center gap-3">
+                <div className="inline-flex rounded-md bg-surface border border-border p-1">
+                  <button
+                    onClick={() => setTrajectoryMode('exercise')}
+                    className={`px-3 py-1 text-xs font-semibold rounded-md ${trajectoryMode === 'exercise' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-blue-50'}`}
+                  >
+                    Exercise
+                  </button>
+                  <button
+                    onClick={() => setTrajectoryMode('bodypart')}
+                    className={`px-3 py-1 text-xs font-semibold rounded-md ${trajectoryMode === 'bodypart' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-blue-50'}`}
+                  >
+                    Bodypart
+                  </button>
+                </div>
+                <div className="text-xs font-bold px-3 py-1.5 bg-surface border border-border rounded-lg text-blue-600 tracking-wide">
+                  {trajectoryMode === 'exercise' ? exercise : `${activeTab} (Aggregate)`}
+                </div>
               </div>
             </div>
             
             {exerciseLogs.length > 0 ? (
               <div className="bg-surface p-4 border border-border rounded-xl">
-                <StrengthChart dates={chartDates} oneRMs={chartValues} exerciseName={exercise} />
+                <StrengthChart dates={displayChartDates} oneRMs={chartValues} exerciseName={exercise} />
               </div>
             ) : (
               <div className="h-64 flex flex-col items-center justify-center border border-dashed border-border rounded-xl bg-slate-50">
@@ -480,57 +547,73 @@ export default function StrengthTracker() {
               <RotateCcw className="text-blue-600" size={18} />
               Workout Lift History
             </h2>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-border text-slate-500 text-xs font-bold uppercase tracking-wider">
-                    <th className="pb-3 pl-2">Date</th>
-                    <th className="pb-3">Lifting Load</th>
-                    <th className="pb-3">Reps Logged</th>
-                    <th className="pb-3">Calculated metric</th>
-                    <th className="pb-3 text-right pr-2">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="text-sm divide-y divide-border">
-                  {exerciseLogs.slice().reverse().map((log) => {
-                    const estValue = trackingType === "Time" 
-                      ? log.weight 
-                      : trackingType === "Reps" 
-                        ? log.reps 
-                        : calculateOneRM(log.weight, log.reps);
-                    
-                    return (
-                      <tr key={log.id} className="hover:bg-blue-50 transition-colors">
-                        <td className="py-3 pl-2 font-medium text-slate-700">{log.date}</td>
-                        <td className="py-3 font-semibold text-slate-950">
-                          {trackingType === "Time" ? "-" : `${log.weight} kg`}
-                        </td>
-                        <td className="py-3 font-semibold text-slate-950">{log.reps} reps</td>
-                        <td className="py-3 font-bold text-blue-600">
-                          {formatExerciseValue(estValue, trackingType)}
-                        </td>
-                        <td className="py-3 text-right pr-2">
-                          <button
-                            onClick={() => handleDeleteLog(log.id)}
-                            className="text-slate-500 hover:text-red-500 transition-colors p-1"
-                            title="Delete this set log"
-                          >
-                            <Trash2 size={15} />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  {exerciseLogs.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="py-6 text-center text-slate-500 text-xs">
-                        No lifting data has been recorded yet. Select another exercise or log a direct set above!
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
+            <div className="flex gap-2 items-center mb-4">
+              <label className="text-xs text-slate-600">Month:</label>
+              <select value={selectedMonth ?? ""} onChange={(e) => { setSelectedMonth(e.target.value || null); setSelectedDateFilter(null); }} className="text-sm border border-border rounded px-2 py-1">
+                <option value="">All</option>
+                {monthOptions.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+
+              <label className="text-xs text-slate-600">Date:</label>
+              <select value={selectedDateFilter ?? ""} onChange={(e) => setSelectedDateFilter(e.target.value || null)} className="text-sm border border-border rounded px-2 py-1">
+                <option value="">All</option>
+                {dateOptionsForMonth(selectedMonth).map(d => <option key={d} value={d}>{formatDisplayDate(d)}</option>)}
+              </select>
+
+              <button onClick={() => { setSelectedMonth(null); setSelectedDateFilter(null); }} className="text-xs text-slate-500 hover:text-slate-900 ml-2">Clear</button>
             </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-border text-slate-500 text-xs font-bold uppercase tracking-wider">
+                      <th className="pb-3 pl-2">Date</th>
+                      <th className="pb-3">Exercise</th>
+                      <th className="pb-3">Lifting Load</th>
+                      <th className="pb-3">Reps Logged</th>
+                      <th className="pb-3">Calculated metric</th>
+                    </tr>
+                  </thead>
+                  {visibleGroups.length > 0 ? visibleGroups.map((group: any) => (
+                    <tbody key={group.date} className="text-sm divide-y divide-border">
+                      <tr className="bg-surface/50">
+                        <td className="py-2 pl-2 font-medium text-slate-700">{formatDisplayDate(group.date)}</td>
+                        <td className="py-2 font-medium text-slate-800">
+                          {group.bodyParts.length === 0 ? '—' : group.bodyParts.length === 1 ? group.bodyParts[0] : `Mix (${group.bodyParts.join(', ')})`}
+                        </td>
+                        <td className="py-2" colSpan={3}></td>
+                      </tr>
+                      {group.exercises.map((ex: any) => (
+                        <React.Fragment key={`${group.date}_${ex.name}`}>
+                          <tr className="bg-white">
+                            <td className="py-2"></td>
+                            <td className="py-2 font-semibold text-slate-900">{ex.name}</td>
+                            <td className="py-2" colSpan={3}></td>
+                          </tr>
+                          {ex.sets.slice().reverse().map((s: any) => {
+                            const setType = getExerciseTrackingType(s.exerciseName || s.exercise);
+                            const est = setType === 'Time' ? s.weight : setType === 'Reps' ? s.reps : calculateOneRM(s.weight, s.reps);
+                            return (
+                              <tr key={s.id} className="hover:bg-blue-50 transition-colors">
+                                <td className="py-3 pl-2 font-medium text-slate-700">{formatDisplayDate(s.date)}</td>
+                                <td className="py-3 font-medium text-slate-800">Set {s.setNumber}</td>
+                                <td className="py-3 font-semibold text-slate-950">{setType === 'Time' ? '-' : `${s.weight} kg`}</td>
+                                <td className="py-3 font-semibold text-slate-950">{s.reps} {setType === 'Reps' ? 'reps' : ''}</td>
+                                <td className="py-3 font-bold text-blue-600">{formatExerciseValue(est, setType)}</td>
+                              </tr>
+                            );
+                          })}
+                        </React.Fragment>
+                      ))}
+                    </tbody>
+                  )) : (
+                    <tbody>
+                      <tr>
+                        <td colSpan={5} className="py-6 text-center text-slate-500 text-xs">No lifting data has been recorded yet. Add workouts through your training plan.</td>
+                      </tr>
+                    </tbody>
+                  )}
+                </table>
+              </div>
           </section>
         </div>
       </div>

@@ -28,6 +28,8 @@ export function proteinMultiplier(goal: Goal): number {
  * Compute daily protein target (grams) from weight (kg) and goal.
  */
 export function proteinTarget(weightKg: number, goal: Goal): number {
-  const mult = proteinMultiplier(goal);
-  return Math.round(weightKg * mult * 10) / 10;
+  // Use Day Analysis standard: 1.8 g per kg as the canonical target
+  // This centralizes the Day Analysis behavior so all callers of proteinTarget
+  // get the same target (matches Journey/day implementation).
+  return Math.round(weightKg * 1.8);
 }

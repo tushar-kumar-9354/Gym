@@ -1,11 +1,11 @@
 [
   {
-    "email": "tk9355248@gmail.com",
-    "name": "tusha",
+    "email": "jangratushar348@gmail.com",
+    "name": "tushar",
     "role": "client",
-    "passwordHash": "a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3",
+    "passwordHash": "5e707f67aab34ab3c42fd940998c64a723e2a928cd99a09836a507b77124b35b",
     "status": "active",
-    "validUntil": "2026-06-22T06:44:52.710Z",
-    "createdAt": "2026-05-22T06:44:52.710Z"
+    "validUntil": "2026-06-23T06:50:36.748Z",
+    "createdAt": "2026-05-23T06:50:36.749Z"
   }
 ]
