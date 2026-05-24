@@ -39,23 +39,31 @@ export default function Dashboard() {
     end.setMonth(end.getMonth() + durationMonths);
 
     const normalizedWeights = normalizeWeeklyWeights(weights);
-    const weightMap = new Map(normalizedWeights.map((entry) => [getWeightDateKey(entry.date), entry.weight]));
     const dates: Date[] = [];
-    const actualData: number[] = [];
+    const actualData: (number | null)[] = [];
     const targetData: number[] = [];
 
-    let lastKnownWeight = normalizedWeights.length > 0 ? normalizedWeights[0].weight : startWeight;
+    const latestLoggedDateStr = normalizedWeights.length > 0
+      ? getWeightDateKey(normalizedWeights[normalizedWeights.length - 1].date)
+      : null;
 
     for (let current = new Date(start); current <= end; current.setDate(current.getDate() + 7)) {
-      const key = getWeightDateKey(current.toISOString().split("T")[0]);
-      const exactWeight = weightMap.get(key);
-
-      if (typeof exactWeight === "number") {
-        lastKnownWeight = exactWeight;
-      }
+      const currentStr = getWeightDateKey(current.toISOString());
 
       dates.push(new Date(current));
-      actualData.push(lastKnownWeight);
+
+      if (latestLoggedDateStr && currentStr > latestLoggedDateStr) {
+        actualData.push(null);
+      } else {
+        const matchingEntries = normalizedWeights.filter(
+          (entry) => getWeightDateKey(entry.date) <= currentStr
+        );
+        if (matchingEntries.length > 0) {
+          actualData.push(matchingEntries[matchingEntries.length - 1].weight);
+        } else {
+          actualData.push(startWeight);
+        }
+      }
 
       const daysSinceStart = Math.max(0, Math.floor((current.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
       const safeTotalDays = Math.max(1, durationMonths * 30);
@@ -100,6 +108,16 @@ export default function Dashboard() {
   const [selectedWeightEntryDate, setSelectedWeightEntryDate] = useState("");
   const [editWeightValue, setEditWeightValue] = useState("");
   const [updateStatus, setUpdateStatus] = useState("");
+  const [timeTick, setTimeTick] = useState(0);
+  const [lastActionTime, setLastActionTime] = useState<number>(0);
+
+  useEffect(() => {
+    if (!TEST_MODE) return;
+    const interval = setInterval(() => {
+      setTimeTick((t) => t + 1);
+    }, 500);
+    return () => clearInterval(interval);
+  }, []);
 
   // Set View Toggle
   const [setViewMode, setSetViewMode] = useState<"Today" | "Yesterday">("Today");
@@ -143,16 +161,7 @@ export default function Dashboard() {
   const getCurrentTrackedWeight = (weights = weeklyWeights) => {
     const normalized = normalizeWeeklyWeights(weights);
     if (normalized.length === 0) return startWeight;
-
-    if (TEST_MODE) {
-      return normalized[normalized.length - 1].weight;
-    }
-
-    const now = new Date();
-    now.setHours(0, 0, 0, 0);
-
-    const activeWeights = normalized.filter((entry) => new Date(entry.date) <= now);
-    return activeWeights.length > 0 ? activeWeights[activeWeights.length - 1].weight : startWeight;
+    return normalized[normalized.length - 1].weight;
   };
 
   const getTestModeWeightDate = () => {
@@ -466,6 +475,7 @@ export default function Dashboard() {
       });
     }
 
+    setLastActionTime(Date.now());
     alert(`Weight Logged Successfully! ${TEST_MODE && weeklyWeights.length > 0 ? "Next 7-day target" : "Today"}: ${weightVal} kg`);
     setNewWeeklyWeight("");
   };
@@ -770,17 +780,29 @@ export default function Dashboard() {
     const diffTime = Math.abs(todayObj.getTime() - startObj.getTime());
     daysSinceStart = Math.floor(diffTime / (1000 * 60 * 60 * 24));
 
-    const lastWeighInDate = getLatestPastWeightEntryDate() ?? startObj;
-    const intervalMs = TEST_MODE ? 3 * 1000 : 7 * 24 * 60 * 60 * 1000; // 3 seconds or 7 days (test mode uses 3s)
-    const diffSinceLastMs = Math.abs(todayObj.getTime() - lastWeighInDate.getTime());
+    const lastWeighInDate = getLatestWeightEntryDate() ?? startObj;
 
-    if (diffSinceLastMs >= intervalMs) {
-      showWeighInForm = true;
+    if (TEST_MODE) {
+      const elapsedMs = Date.now() - lastActionTime;
+      if (weeklyWeights.length === 0 || elapsedMs >= 3000) {
+        showWeighInForm = true;
+      } else {
+        showWeighInForm = false;
+        nextWeighInDays = Math.ceil((3000 - elapsedMs) / 1000);
+      }
     } else {
-      // Show remaining time until next weigh‑in (seconds in test mode, days otherwise)
-      const divisor = TEST_MODE ? 1000 : 1000 * 60 * 60 * 24;
-      const remainingUnits = Math.ceil((intervalMs - diffSinceLastMs) / divisor);
-      nextWeighInDays = remainingUnits;
+      const nextWeighInDate = new Date(lastWeighInDate);
+      nextWeighInDate.setDate(nextWeighInDate.getDate() + 7);
+
+      const now = new Date();
+      const diffMs = nextWeighInDate.getTime() - now.getTime();
+
+      if (diffMs <= 0) {
+        showWeighInForm = true;
+      } else {
+        showWeighInForm = false;
+        nextWeighInDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+      }
     }
   }
 
@@ -864,7 +886,7 @@ export default function Dashboard() {
   const largestDecrease = negativeWeeklyChanges.length > 0
     ? negativeWeeklyChanges.reduce((best, item) => item.change < best.change ? item : best, negativeWeeklyChanges[0])
     : null;
-  const weeklyProgressVisible = planFinished && sortedWeeklyWeights.length >= 2;
+  const weeklyProgressVisible = sortedWeeklyWeights.length >= 2;
 
   // Set visual logs filtering — group by exercise
   const targetSetDateStr = setViewMode === "Today" ? todayStr : yesterdayStr;
@@ -1344,7 +1366,12 @@ export default function Dashboard() {
                 </div>
 
                 <div className="mt-4 pt-4 border-t border-gray-50 space-y-3">
-                  {showWeighInForm ? (
+                  {planFinished ? (
+                    <div className="text-center bg-gray-100 rounded-lg p-3 border border-gray-200">
+                      <span className="text-sm font-bold text-gray-500 block">Plan Completed 🏆</span>
+                      <span className="text-xs text-gray-400 block mt-1">Weekly logs are locked. Extend your plan duration to log more.</span>
+                    </div>
+                  ) : showWeighInForm ? (
                     <form onSubmit={handleAddWeeklyWeight} className="flex gap-2">
                       <input
                         type="number"
