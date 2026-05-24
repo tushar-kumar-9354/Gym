@@ -90,13 +90,16 @@ export default function ReportsExport() {
         activePlanName: activePlan,
       };
       if (activePlanObject) {
+        const storedWeights = JSON.parse(localStorage.getItem(`${userEmail}_${activePlan}_weeklyWeights`) || "[]");
+        const latestWeight = storedWeights.length > 0 ? storedWeights[storedWeights.length - 1].weight : (activePlanObject.weight ?? 80);
+
         const planTargets = computePlanTargets({
           startWeight: activePlanObject.weight ?? 80,
           goalWeight: activePlanObject.goalWeight ?? 75,
           planDuration: activePlanObject.duration ?? 3,
           goal: activePlanObject.goal || "General Fitness",
           activityLevel: activePlanObject.activityLevel || "moderate",
-          currentWeight: activePlanObject.weight ?? 80,
+          currentWeight: latestWeight,
         });
 
         if (typeof activePlanObject.weight === 'number') body.startWeight = activePlanObject.weight;
@@ -481,7 +484,7 @@ export default function ReportsExport() {
                       <div key={key} className="flex justify-between items-center text-sm bg-indigo-50/50 p-2.5 rounded-lg border border-indigo-100/50">
                         <span className="text-gray-700 font-medium">{label}</span>
                         <div className="flex items-center gap-2">
-                          <span className="font-bold text-gray-900">{val} cm</span>
+                          <span className="font-bold text-gray-900">{String(val)} cm</span>
                           {changeEl}
                         </div>
                       </div>

@@ -7,7 +7,7 @@ import Link from "next/link";
 import StrengthChart from "@/components/charts/StrengthChart";
 import GoalChart from "@/components/charts/GoalChart";
 import { getExerciseTrackingType, formatExerciseValue, formatMacroValue, formatLiters } from "@/utils/oneRM";
-import { computeGoldilocksScores } from "@/lib/scoring";
+import { computeGoldilocksScores, computeAdvancedGoldilocksScores } from "@/lib/scoring";
 import { computePlanTargets } from "@/lib/planTargets";
 
 export default function Dashboard() {
@@ -636,7 +636,7 @@ export default function Dashboard() {
   const targetHydration = targetHydrationMl;
 
   // --- Dynamic Scores for 6-metric Grid using Goldilocks Zone Penalty Rule ---
-  const warningsList: { metric: string; msg: string; severity: "warning" | "penalty" }[] = [];
+  const setsLoggedToday = exerciseLogs.filter(l => l.date && l.date.startsWith(todayStr)).length;
 
   // Sleep warning/penalty logic:
   let sleepHoursDeduction = 0;
@@ -655,86 +655,8 @@ export default function Dashboard() {
     currentSleepQuality = todaySleepEntry.quality || "Good";
   }
 
-  if (!todaySleepEntry) {
-    warningsList.push({ metric: "Sleep", msg: "No sleep logged for today yet.", severity: "warning" });
-    sleepHoursDeduction = 30; // maximum deduction if not logged
-  } else {
-    const sleepDiff = Math.abs(currentSleep - sleepTargetVal);
-    if (sleepDiff > 0 && sleepDiff <= 1) {
-      warningsList.push({ metric: "Sleep", msg: `Sleep hours off by ${Math.round(sleepDiff)}h (within ±1h warning zone). No penalty applied.`, severity: "warning" });
-    } else if (sleepDiff > 1) {
-      sleepHoursDeduction = (sleepDiff - 1) * 4;
-      warningsList.push({ metric: "Sleep", msg: `Sleep hours off by ${Math.round(sleepDiff)}h. Penalty applied.`, severity: "penalty" });
-    }
-
-    // Quality check
-    if (currentSleepQuality === "Excellent") {
-      sleepQualityDeduction = 0;
-    } else if (currentSleepQuality === "Good") {
-      sleepQualityDeduction = 1.5;
-      warningsList.push({ metric: "Sleep Quality", msg: "Sleep quality rated Good (+1.5 warning deduction).", severity: "warning" });
-    } else if (currentSleepQuality === "Fair") {
-      sleepQualityDeduction = 5;
-      warningsList.push({ metric: "Sleep Quality", msg: "Sleep quality rated Fair (-5 penalty points).", severity: "penalty" });
-    } else if (currentSleepQuality === "Poor") {
-      sleepQualityDeduction = 10;
-      warningsList.push({ metric: "Sleep Quality", msg: "Sleep quality rated Poor (-10 penalty points).", severity: "penalty" });
-    }
-  }
-
-  // Build warnings list from differences (used for UI messages)
-  // Calories warning/penalty logic:
-  const calDiff = Math.abs(currentCalories - targetCalories);
-  if (calDiff > 0 && calDiff <= 300) {
-    warningsList.push({ metric: "Calories", msg: `Calories off by ${calDiff} kcal (within ±300 kcal warning zone). No penalty applied.`, severity: "warning" });
-  } else if (calDiff > 300) {
-    warningsList.push({ metric: "Calories", msg: `Calories off by ${calDiff} kcal. Penalty applied.`, severity: "penalty" });
-  }
-
-  // Protein warning/penalty logic:
-  const protDiff = Math.abs(currentProtein - targetProtein);
-  if (protDiff > 0 && protDiff <= 15) {
-    warningsList.push({ metric: "Protein", msg: `Protein off by ${protDiff}g (within ±15g warning zone). No penalty applied.`, severity: "warning" });
-  } else if (protDiff > 15) {
-    warningsList.push({ metric: "Protein", msg: `Protein off by ${protDiff}g. Penalty applied.`, severity: "penalty" });
-  }
-
-  // Workout sets warning/penalty logic:
-  const setsLoggedToday = exerciseLogs.filter(l => l.date === todayStr).length;
-  const workoutDiff = Math.abs(setsLoggedToday - 6);
-  if (workoutDiff > 0 && workoutDiff <= 4) {
-    warningsList.push({ metric: "Workout Sets", msg: `Workout sets off by ${workoutDiff} (within ±4 sets warning zone). No penalty applied.`, severity: "warning" });
-  } else if (workoutDiff > 4) {
-    warningsList.push({ metric: "Workout Sets", msg: `Workout sets off by ${workoutDiff} sets. Penalty applied.`, severity: "penalty" });
-  }
-
-  // Hydration warning/penalty logic:
-  const hydDiff = Math.abs(loggedWater - targetHydration);
-  if (hydDiff > 0 && hydDiff <= 500) {
-    warningsList.push({ metric: "Hydration", msg: `Hydration off by ${hydDiff}ml (within ±500ml warning zone). No penalty applied.`, severity: "warning" });
-  } else if (hydDiff > 500) {
-    warningsList.push({ metric: "Hydration", msg: `Hydration off by ${hydDiff}ml. Penalty applied.`, severity: "penalty" });
-  }
-
-  // Fats warning/penalty logic:
-  const fatDiff = Math.abs(currentFats - targetFats);
-  if (fatDiff > 0 && fatDiff <= 15) {
-    warningsList.push({ metric: "Fats", msg: `Fats off by ${fatDiff}g (within ±15g warning zone). No penalty applied.`, severity: "warning" });
-  } else if (fatDiff > 15) {
-    warningsList.push({ metric: "Fats", msg: `Fats off by ${fatDiff}g. Penalty applied.`, severity: "penalty" });
-  }
-
-  // If everything is unlogged (all zeros), show 0% instead of treating
-  // the lack of data as a perfect score. Otherwise compute normally.
-  const allMetricsZero =
-    currentSleep === 0 &&
-    currentCalories === 0 &&
-    currentProtein === 0 &&
-    setsLoggedToday === 0 &&
-    loggedWater === 0 &&
-    currentFats === 0;
   // Use centralized scoring helper so Dashboard and Journey match exactly
-  const scoringResult = computeGoldilocksScores({
+  const scoringResult = computeAdvancedGoldilocksScores({
     diet: { calories: currentCalories, protein: currentProtein, fat: currentFats },
     sleepHours: currentSleep,
     sleepTarget: sleepTargetVal,
@@ -748,7 +670,47 @@ export default function Dashboard() {
     targetFats,
   });
 
+  const allMetricsZero =
+    currentSleep === 0 &&
+    currentCalories === 0 &&
+    currentProtein === 0 &&
+    setsLoggedToday === 0 &&
+    loggedWater === 0 &&
+    currentFats === 0;
+
   const overallProgress = allMetricsZero ? 0 : scoringResult.overallScore;
+
+  // Build warnings list from centralized analysis helper outputs!
+  const warningsList: { metric: string; msg: string; severity: "warning" | "penalty" }[] = [];
+  scoringResult.analysis.forEach(item => {
+    if (item.penalty > 0) {
+      // Beyond buffer → real penalty
+      warningsList.push({
+        metric: item.label,
+        msg: item.warning,
+        severity: "penalty"
+      });
+    } else if (
+      item.isOnTarget &&
+      item.warning &&
+      !item.warning.toLowerCase().includes("on target") &&
+      !item.warning.toLowerCase().includes("no ") &&
+      item.warning.toLowerCase().includes("within safe range")
+    ) {
+      // Within buffer → soft warning only
+      warningsList.push({
+        metric: item.label,
+        msg: item.warning,
+        severity: "warning"
+      });
+    } else if (!todaySleepEntry && item.key === "sleep") {
+      warningsList.push({
+        metric: "Sleep",
+        msg: "No sleep logged for today yet.",
+        severity: "warning"
+      });
+    }
+  });
 
   // Map helper outputs to variables used by UI components
   const sleepPoints = scoringResult.sleepPoints;
@@ -1108,121 +1070,62 @@ export default function Dashboard() {
                   <p className="text-xs text-gray-500">
                     Both going <strong>under</strong> or <strong>over</strong> your daily targets incurs a penalty to ensure optimal recovery and muscle growth while avoiding overtraining or excessive surplus.
                   </p>
+                  {/* Legend */}
+                  <div className="flex items-center gap-2 mt-2 flex-wrap">
+                    <span className="text-[10px] font-bold text-green-600 bg-green-50 border border-green-100 px-2 py-0.5 rounded-full flex items-center gap-1">✓ Perfect</span>
+                    <span className="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-100 px-2 py-0.5 rounded-full flex items-center gap-1">⚠ Warning (no pts lost)</span>
+                    <span className="text-[10px] font-bold text-red-600 bg-red-50 border border-red-100 px-2 py-0.5 rounded-full flex items-center gap-1">✕ Penalty</span>
+                  </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
-                    {/* Sleep */}
-                    <div className="bg-white p-3.5 rounded-2xl border border-gray-100 flex justify-between items-center">
-                      <div className="flex items-center gap-2.5">
-                        <div className="bg-purple-50 p-2 rounded-xl text-purple-500">
-                          <Moon size={16} />
+                    {scoringResult.analysis.map((item) => {
+                      const iconsMap: Record<string, React.ReactNode> = {
+                        sleep: <Moon size={16} />,
+                        calories: <Coffee size={16} />,
+                        protein: <Droplets size={16} />,
+                        workout: <Dumbbell size={16} />,
+                        hydration: <Droplets size={16} />,
+                        fats: <Coffee size={16} />,
+                      };
+                      const bgColorsMap: Record<string, string> = {
+                        sleep: "bg-purple-50 text-purple-500",
+                        calories: "bg-orange-50 text-orange-500",
+                        protein: "bg-blue-50 text-blue-500",
+                        workout: "bg-green-50 text-green-500",
+                        hydration: "bg-cyan-50 text-cyan-500",
+                        fats: "bg-rose-50 text-rose-500",
+                      };
+                      // Determine state: penalty | warning-in-buffer | perfect
+                      const isInBuffer = item.isOnTarget && item.warning && item.warning.toLowerCase().includes("within safe range");
+                      const isPenalty = item.penalty > 0;
+                      return (
+                        <div key={item.key} className={`bg-white p-3.5 rounded-2xl border flex justify-between items-center transition-colors ${
+                          isPenalty ? "border-red-100 bg-red-50/30" : isInBuffer ? "border-amber-100 bg-amber-50/30" : "border-gray-100"
+                        }`}>
+                          <div className="flex items-center gap-2.5">
+                            <div className={`p-2 rounded-xl shrink-0 ${bgColorsMap[item.key] || "bg-gray-50"}`}>
+                              {iconsMap[item.key] || <AlertCircle size={16} />}
+                            </div>
+                            <div>
+                              <p className="text-xs font-bold text-gray-900">{item.label} (Max {item.maxPoints}pts)</p>
+                              <p className="text-[11px] text-gray-500">
+                                Target: {item.key === "hydration" ? `${formatLiters(item.target)}L` : `${item.target}${item.unit}`} | Got: {item.key === "hydration" ? `${formatLiters(Number(item.logged))}L` : `${item.logged}${item.unit}`}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="text-right flex flex-col items-end gap-1">
+                            {isPenalty ? (
+                              <span className="text-[11px] font-bold text-red-500 bg-red-50 border border-red-100 px-2 py-0.5 rounded-full">✕ -{item.penalty} pts</span>
+                            ) : isInBuffer ? (
+                              <span className="text-[11px] font-bold text-amber-600 bg-amber-50 border border-amber-100 px-2 py-0.5 rounded-full">⚠ Warning</span>
+                            ) : (
+                              <span className="text-[11px] font-bold text-green-600 bg-green-50 border border-green-100 px-2 py-0.5 rounded-full">✓ Perfect!</span>
+                            )}
+                            <p className="text-[10px] text-gray-400">Score: {Math.round(item.points)} / {item.maxPoints}</p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="text-xs font-bold text-gray-900">Sleep (Max 30pts)</p>
-                          <p className="text-[11px] text-gray-500">Target: {sleepTarget}h | Got: {currentSleep}h</p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <span className={`text-xs font-bold ${sleepDeducted > 0 ? 'text-red-500' : 'text-green-500'}`}>
-                          {sleepDeducted > 0 ? `-${sleepDeducted} pts` : "Perfect!"}
-                        </span>
-                        <p className="text-[10px] text-gray-400 mt-0.5">Score: {Math.round(sleepPoints)} / 30</p>
-                      </div>
-                    </div>
-
-                    {/* Calories */}
-                    <div className="bg-white p-3.5 rounded-2xl border border-gray-100 flex justify-between items-center">
-                      <div className="flex items-center gap-2.5">
-                        <div className="bg-orange-50 p-2 rounded-xl text-orange-500">
-                          <Coffee size={16} />
-                        </div>
-                        <div>
-                          <p className="text-xs font-bold text-gray-900">Calories (Max 25pts)</p>
-                          <p className="text-[11px] text-gray-500">Target: {targetCalories} | Got: {currentCalories}</p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <span className={`text-xs font-bold ${calDeducted > 0 ? 'text-red-500' : 'text-green-500'}`}>
-                          {calDeducted > 0 ? `-${calDeducted} pts` : "Perfect!"}
-                        </span>
-                        <p className="text-[10px] text-gray-400 mt-0.5">Score: {Math.round(calPoints)} / 25</p>
-                      </div>
-                    </div>
-
-                    {/* Protein */}
-                    <div className="bg-white p-3.5 rounded-2xl border border-gray-100 flex justify-between items-center">
-                      <div className="flex items-center gap-2.5">
-                        <div className="bg-blue-50 p-2 rounded-xl text-blue-500">
-                          <Droplets size={16} />
-                        </div>
-                        <div>
-                          <p className="text-xs font-bold text-gray-900">Protein (Max 15pts)</p>
-                          <p className="text-[11px] text-gray-500">Target: {displayTargetProtein}g | Got: {displayCurrentProtein}g</p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <span className={`text-xs font-bold ${protDeducted > 0 ? 'text-red-500' : 'text-green-500'}`}>
-                          {protDeducted > 0 ? `-${protDeducted} pts` : "Perfect!"}
-                        </span>
-                        <p className="text-[10px] text-gray-400 mt-0.5">Score: {Math.round(protPoints)} / 15</p>
-                      </div>
-                    </div>
-
-                    {/* Workout */}
-                    <div className="bg-white p-3.5 rounded-2xl border border-gray-100 flex justify-between items-center">
-                      <div className="flex items-center gap-2.5">
-                        <div className="bg-green-50 p-2 rounded-xl text-green-500">
-                          <Dumbbell size={16} />
-                        </div>
-                        <div>
-                          <p className="text-xs font-bold text-gray-900">Workout (Max 12pts)</p>
-                          <p className="text-[11px] text-gray-500">Target: 6 sets | Got: {setsLoggedToday} sets</p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <span className={`text-xs font-bold ${workoutDeducted > 0 ? 'text-red-500' : 'text-green-500'}`}>
-                          {workoutDeducted > 0 ? `-${workoutDeducted} pts` : "Perfect!"}
-                        </span>
-                        <p className="text-[10px] text-gray-400 mt-0.5">Score: {Math.round(workoutPoints)} / 12</p>
-                      </div>
-                    </div>
-
-                    {/* Hydration */}
-                    <div className="bg-white p-3.5 rounded-2xl border border-gray-100 flex justify-between items-center">
-                      <div className="flex items-center gap-2.5">
-                        <div className="bg-cyan-50 p-2 rounded-xl text-cyan-500">
-                          <Droplets size={16} />
-                        </div>
-                        <div>
-                          <p className="text-xs font-bold text-gray-900">Hydration (Max 10pts)</p>
-                          <p className="text-[11px] text-gray-500">Target: {formatLiters(targetHydration)}L | Got: {formatLiters(loggedWater)}L</p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <span className={`text-xs font-bold ${hydDeducted > 0 ? 'text-red-500' : 'text-green-500'}`}>
-                          {hydDeducted > 0 ? `-${hydDeducted} pts` : "Perfect!"}
-                        </span>
-                        <p className="text-[10px] text-gray-400 mt-0.5">Score: {Math.round(hydPoints)} / 10</p>
-                      </div>
-                    </div>
-
-                    {/* Fats */}
-                    <div className="bg-white p-3.5 rounded-2xl border border-gray-100 flex justify-between items-center">
-                      <div className="flex items-center gap-2.5">
-                        <div className="bg-rose-50 p-2 rounded-xl text-rose-500">
-                          <Coffee size={16} />
-                        </div>
-                        <div>
-                          <p className="text-xs font-bold text-gray-900">Fats (Max 8pts)</p>
-                          <p className="text-[11px] text-gray-500">Target: {displayTargetFats}g | Got: {displayCurrentFats}g</p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <span className={`text-xs font-bold ${fatDeducted > 0 ? 'text-red-500' : 'text-green-500'}`}>
-                          {fatDeducted > 0 ? `-${fatDeducted} pts` : "Perfect!"}
-                        </span>
-                        <p className="text-[10px] text-gray-400 mt-0.5">Score: {Math.round(fatPoints)} / 8</p>
-                      </div>
-                    </div>
+                      );
+                    })}
                   </div>
 
                   {/* Warnings list nested inside */}
@@ -1434,86 +1337,88 @@ export default function Dashboard() {
                     </div>
                   )}
 
-                  <div className="bg-gray-50 rounded-2xl p-3 border border-gray-100">
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-semibold text-gray-800">Goal Trajectory Data Controls</p>
-                        <p className="text-xs text-gray-500">Use this to correct a mistaken weigh-in and refresh the 7-day graph immediately.</p>
+                  {!planFinished && (
+                    <div className="bg-gray-50 rounded-2xl p-3 border border-gray-100">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-gray-800">Goal Trajectory Data Controls</p>
+                          <p className="text-xs text-gray-500">Use this to correct a mistaken weigh-in and refresh the 7-day graph immediately.</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setShowWeightEditor((value) => !value)}
+                          className="text-xs font-semibold text-blue-600 bg-white border border-blue-100 rounded-full px-3 py-1.5 hover:bg-blue-50 transition-colors"
+                        >
+                          {showWeightEditor ? "Hide editor" : "Edit logged day"}
+                        </button>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => setShowWeightEditor((value) => !value)}
-                        className="text-xs font-semibold text-blue-600 bg-white border border-blue-100 rounded-full px-3 py-1.5 hover:bg-blue-50 transition-colors"
-                      >
-                        {showWeightEditor ? "Hide editor" : "Edit logged day"}
-                      </button>
+
+                      {showWeightEditor && (
+                        <form onSubmit={handleUpdateWeightEntry} className="mt-3 space-y-3">
+                          {sortedWeeklyWeights.length === 0 ? (
+                            <p className="text-xs text-gray-500">No weigh-ins are available yet. Log one above to unlock corrections.</p>
+                          ) : (
+                            <>
+                              <div className="space-y-1">
+                                <label className="text-xs font-semibold text-gray-600">Choose logged day</label>
+                                <select
+                                  value={selectedWeightEntryDate}
+                                  onChange={(e) => {
+                                    setSelectedWeightEntryDate(e.target.value);
+                                    const selected = sortedWeeklyWeights.find((entry) => getWeightDateKey(entry.date) === e.target.value);
+                                    setEditWeightValue(selected ? String(selected.weight) : "");
+                                  }}
+                                  className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:border-blue-500"
+                                >
+                                  {(() => {
+                                    const uniqueWeights = sortedWeeklyWeights.filter((w, i, arr) =>
+                                      arr.findIndex(e => getWeightDateKey(e.date) === getWeightDateKey(w.date)) === i);
+                                    return uniqueWeights.map((entry, idx) => (
+                                      <option key={idx} value={getWeightDateKey(entry.date)}>
+                                        {new Date(entry.date).toLocaleDateString()} - {entry.weight} kg
+                                      </option>
+                                    ));
+                                  })()}
+                                </select>
+                              </div>
+
+                              <div className="space-y-1">
+                                <label className="text-xs font-semibold text-gray-600">Corrected weight (kg)</label>
+                                <input
+                                  type="number"
+                                  value={editWeightValue}
+                                  onChange={(e) => setEditWeightValue(e.target.value)}
+                                  placeholder="Enter corrected weight"
+                                  required
+                                  className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-blue-500"
+                                />
+                              </div>
+
+                              <div className="flex flex-col sm:flex-row gap-2">
+                                <button
+                                  type="submit"
+                                  className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+                                >
+                                  Confirm correction
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setShowWeightEditor(false)}
+                                  className="bg-white border border-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+                                >
+                                  Close
+                                </button>
+                              </div>
+
+                              {updateStatus && (
+                                <p className="text-xs text-green-600 font-medium">{updateStatus}</p>
+                              )}
+                            </>
+                          )}
+                        </form>
+                      )}
                     </div>
-
-                    {showWeightEditor && (
-                      <form onSubmit={handleUpdateWeightEntry} className="mt-3 space-y-3">
-                        {sortedWeeklyWeights.length === 0 ? (
-                          <p className="text-xs text-gray-500">No weigh-ins are available yet. Log one above to unlock corrections.</p>
-                        ) : (
-                          <>
-                            <div className="space-y-1">
-                              <label className="text-xs font-semibold text-gray-600">Choose logged day</label>
-                              <select
-                                value={selectedWeightEntryDate}
-                                onChange={(e) => {
-                                  setSelectedWeightEntryDate(e.target.value);
-                                  const selected = sortedWeeklyWeights.find((entry) => getWeightDateKey(entry.date) === e.target.value);
-                                  setEditWeightValue(selected ? String(selected.weight) : "");
-                                }}
-                                className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:border-blue-500"
-                              >
-                                {(() => {
-                                  const uniqueWeights = sortedWeeklyWeights.filter((w, i, arr) =>
-                                    arr.findIndex(e => getWeightDateKey(e.date) === getWeightDateKey(w.date)) === i);
-                                  return uniqueWeights.map((entry, idx) => (
-                                    <option key={idx} value={getWeightDateKey(entry.date)}>
-                                      {new Date(entry.date).toLocaleDateString()} - {entry.weight} kg
-                                    </option>
-                                  ));
-                                })()}
-                              </select>
-                            </div>
-
-                            <div className="space-y-1">
-                              <label className="text-xs font-semibold text-gray-600">Corrected weight (kg)</label>
-                              <input
-                                type="number"
-                                value={editWeightValue}
-                                onChange={(e) => setEditWeightValue(e.target.value)}
-                                placeholder="Enter corrected weight"
-                                required
-                                className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-blue-500"
-                              />
-                            </div>
-
-                            <div className="flex flex-col sm:flex-row gap-2">
-                              <button
-                                type="submit"
-                                className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
-                              >
-                                Confirm correction
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setShowWeightEditor(false)}
-                                className="bg-white border border-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
-                              >
-                                Close
-                              </button>
-                            </div>
-
-                            {updateStatus && (
-                              <p className="text-xs text-green-600 font-medium">{updateStatus}</p>
-                            )}
-                          </>
-                        )}
-                      </form>
-                    )}
-                  </div>
+                  )}
                 </div>
 
                 {weeklyProgressVisible && (

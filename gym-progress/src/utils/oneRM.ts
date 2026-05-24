@@ -15,7 +15,8 @@ export function formatMacroValue(value: number): string {
 
 export function formatLiters(ml: number): string {
   if (!ml && ml !== 0) return "0";
-  return Math.round(ml / 1000).toString(); // integer liters
+  const liters = ml / 1000;
+  return liters % 1 === 0 ? liters.toFixed(0) : liters.toFixed(1);
 }
 
 export type ExerciseTrackingType = "1RM" | "Reps" | "Time";

@@ -285,12 +285,12 @@ export default function Plans() {
                 <input
                   type="number"
                   min="5"
-                  max="12"
+                  max="10"
                   value={sleepTarget}
                   onChange={(e) => setSleepTarget(e.target.value)}
                   className="w-full bg-gray-50 border border-gray-100 rounded-2xl py-2.5 px-4 text-gray-900 focus:outline-none focus:border-blue-500"
                 />
-                <p className="text-xs text-gray-400 mt-1">Recommended: 7–9 hrs for most goals</p>
+                <p className="text-xs text-gray-400 mt-1">Recommended: 7–9 hrs for most goals (max 10 hrs)</p>
               </div>
             </div>
 

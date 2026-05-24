@@ -3,7 +3,7 @@
 import React, { useState, useEffect, Suspense } from "react";
 import { Calendar as CalendarIcon, CheckCircle2, Trash2, Plus, Search, Loader2, ArrowRight, Dumbbell, Coffee, Droplet, Scale, PieChart, Check, Moon } from "lucide-react";
 import ProgressBar from "@/components/ProgressBar";
-import { computeGoldilocksScores } from "@/lib/scoring";
+import { computeAdvancedGoldilocksScores } from "@/lib/scoring";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { getExerciseTrackingType, formatExerciseValue, calculateOneRM, formatLiters, formatMacroValue } from "@/utils/oneRM";
@@ -106,7 +106,9 @@ function JourneyContent() {
     const plans = JSON.parse(localStorage.getItem(`${email}_plans`) || "[]");
     const currentPlan = plans.find((p: any) => p.name === plan);
     if (currentPlan) {
-      setCurrentWeight(currentPlan.weight);
+      const storedWeights = JSON.parse(localStorage.getItem(`${email}_${plan}_weeklyWeights`) || "[]");
+      const latestWeight = storedWeights.length > 0 ? storedWeights[storedWeights.length - 1].weight : currentPlan.weight;
+      setCurrentWeight(latestWeight);
       setStartWeight(currentPlan.weight);
       setGoalWeight(currentPlan.goalWeight);
       setPlanDuration(currentPlan.duration);
@@ -566,7 +568,7 @@ function JourneyContent() {
   const displayFat = formatMacroValue(currentDiet.fat);
 
   // --- Dynamic Scores for Journey Day Completion using centralized Goldilocks helper ---
-  const scoring = computeGoldilocksScores({
+  const scoring = computeAdvancedGoldilocksScores({
     diet: { calories: currentDiet.calories, protein: currentDiet.protein, fat: currentDiet.fat },
     sleepHours: savedSleep ? savedSleep.hours : 0,
     sleepTarget: effectiveSleepTarget,
@@ -578,107 +580,6 @@ function JourneyContent() {
     targetFats,
   });
 
-  const sleepPoints = scoring.sleepPoints;
-  const sleepScore = scoring.sleepScore;
-  const calPoints = scoring.calPoints;
-  const calScore = scoring.calScore;
-  const proteinPoints = scoring.proteinPoints;
-  const proteinScore = scoring.proteinScore;
-  const exercisePoints = scoring.workoutPoints;
-  const exerciseScore = scoring.workoutScore;
-  const waterPoints = scoring.waterPoints;
-  const waterScore = scoring.waterScore;
-
-  // Fats (8% - Max 8 points. Deduct 1 point for every 5g under or over target)
-  const fatPoints = Math.max(0, 8 - (Math.abs(currentDiet.fat - targetFats) / 5) * 1);
-  const fatScore = (fatPoints / 8) * 100;
-
-  const sleepDelta = (savedSleep?.hours ?? 0) - effectiveSleepTarget;
-  const caloriesDelta = currentDiet.calories - targetCalories;
-  const proteinDelta = currentDiet.protein - targetProtein;
-  const hydrationDelta = waterIntake - waterTarget;
-  const fatDelta = currentDiet.fat - targetFats;
-
-  const sleepPenalty = Math.max(0, Math.round((30 - sleepPoints) * 10) / 10);
-  const caloriesPenalty = Math.max(0, Math.round((25 - calPoints) * 10) / 10);
-  const proteinPenalty = Math.max(0, Math.round((15 - proteinPoints) * 10) / 10);
-  const workoutPenalty = Math.max(0, Math.round((12 - exercisePoints) * 10) / 10);
-  const hydrationPenalty = Math.max(0, Math.round((10 - waterPoints) * 10) / 10);
-  const fatPenalty = Math.max(0, Math.round((8 - fatPoints) * 10) / 10);
-
-  const penaltyRows = [
-    {
-      label: "Sleep",
-      value: savedSleep ? `${savedSleep.hours} / ${effectiveSleepTarget}h` : `0 / ${effectiveSleepTarget}h`,
-      penalty: sleepPenalty,
-      warning: savedSleep
-        ? sleepDelta > 0
-          ? `Sleep is ${sleepDelta.toFixed(1)}h above your target`
-          : sleepDelta < 0
-            ? `Sleep is ${Math.abs(sleepDelta).toFixed(1)}h below your target`
-            : "Sleep is on target"
-        : "No sleep logged yet",
-      tone: sleepPenalty > 0 ? "text-red-600 bg-red-50 border-red-100" : "text-emerald-600 bg-emerald-50 border-emerald-100",
-    },
-    {
-      label: "Calories",
-      value: `${currentDiet.calories} / ${targetCalories} kcal`,
-      penalty: caloriesPenalty,
-      warning: caloriesDelta > 0
-        ? `Calories are ${caloriesDelta} above target`
-        : caloriesDelta < 0
-          ? `Calories are ${Math.abs(caloriesDelta)} below target`
-          : "Calories are on target",
-      tone: caloriesPenalty > 0 ? "text-red-600 bg-red-50 border-red-100" : "text-emerald-600 bg-emerald-50 border-emerald-100",
-    },
-    {
-      label: "Protein",
-      value: `${displayProtein} / ${targetProtein}g`,
-      penalty: proteinPenalty,
-      warning: proteinDelta > 0
-        ? `Protein is ${proteinDelta}g above target`
-        : proteinDelta < 0
-          ? `Protein is ${Math.abs(proteinDelta)}g below target`
-          : "Protein is on target",
-      tone: proteinPenalty > 0 ? "text-red-600 bg-red-50 border-red-100" : "text-emerald-600 bg-emerald-50 border-emerald-100",
-    },
-    {
-      label: "Workout",
-      value: exerciseLogs.length > 0 ? `${exerciseLogs.length} sets done` : "Not done",
-      penalty: workoutPenalty,
-      warning: exerciseLogs.length >= 6
-        ? "Workout volume is on target"
-        : exerciseLogs.length > 0
-          ? `Workout is ${6 - exerciseLogs.length} sets below target`
-          : "No workout logged yet",
-      tone: workoutPenalty > 0 ? "text-red-600 bg-red-50 border-red-100" : "text-emerald-600 bg-emerald-50 border-emerald-100",
-    },
-    {
-      label: "Hydration",
-      value: `${formatLiters(waterIntake)} / ${formatLiters(waterTarget)}L`,
-      penalty: hydrationPenalty,
-      warning: hydrationDelta > 0
-        ? `Hydration is ${formatLiters(hydrationDelta)}L above target`
-        : hydrationDelta < 0
-          ? `Hydration is ${formatLiters(Math.abs(hydrationDelta))}L below target`
-          : "Hydration is on target",
-      tone: hydrationPenalty > 0 ? "text-red-600 bg-red-50 border-red-100" : "text-emerald-600 bg-emerald-50 border-emerald-100",
-    },
-    {
-      label: "Fats",
-      value: `${displayFat} / ${targetFats}g`,
-      penalty: fatPenalty,
-      warning: fatDelta > 0
-        ? `Fats are ${fatDelta.toFixed(1)}g above target`
-        : fatDelta < 0
-          ? `Fats are ${Math.abs(fatDelta).toFixed(1)}g below target`
-          : "Fats are on target",
-      tone: fatPenalty > 0 ? "text-red-600 bg-red-50 border-red-100" : "text-emerald-600 bg-emerald-50 border-emerald-100",
-    },
-  ];
-
-  // If the user hasn't logged anything (all zero), show 0% instead
-  // of treating empty logs as a perfect score.
   const allMetricsZero =
     (savedSleep?.hours ?? 0) === 0 &&
     currentDiet.calories === 0 &&
@@ -687,17 +588,7 @@ function JourneyContent() {
     waterIntake === 0 &&
     currentDiet.fat === 0;
 
-  // Overall Score (Tally out of exactly 100 points)
-  const dayCompletionScore = allMetricsZero
-    ? 0
-    : Math.round(
-        (sleepScore * 0.30) +
-        (calScore * 0.25) +
-        (proteinScore * 0.15) +
-        (exerciseScore * 0.12) +
-        (waterScore * 0.10) +
-        (fatScore * 0.08)
-      );
+  const dayCompletionScore = allMetricsZero ? 0 : scoring.overallScore;
 
   const filteredDisplayLogs = exerciseLogs.filter(log => {
     if (filter === "All") return true;
@@ -824,32 +715,40 @@ function JourneyContent() {
                 </div>
 
                 {/* Per-metric rows */}
-{[
-                  { key: "sleep", label: "Sleep (30%)", val: savedSleep ? `${savedSleep.hours} / ${effectiveSleepTarget}h` : `0 / ${effectiveSleepTarget}h`, pct: sleepScore, color: "bg-purple-500" },
-                  { key: "calories", label: "Calories (25%)", val: `${currentDiet.calories} / ${targetCalories} kcal`, pct: calScore, color: "bg-orange-400" },
-                  { key: "protein", label: "Protein (15%)", val: `${displayProtein} / ${targetProtein}g`, pct: proteinScore, color: "bg-blue-400" },
-                  { key: "workout", label: "Workout (12%)", val: exerciseLogs.length > 0 ? `${exerciseLogs.length} sets done` : "Not done", pct: exerciseScore, color: "bg-green-400" },
-                  { key: "hydration", label: "Hydration (10%)", val: `${formatLiters(waterIntake)} / ${formatLiters(waterTarget)}L`, pct: waterScore, color: "bg-cyan-400" },
-                  { key: "fats", label: "Fats (8%)", val: `${displayFat} / ${targetFats}g`, pct: fatScore, color: "bg-purple-400" },
-                ].map(({ key, label, val, pct, color }) => {
-                  const insight = penaltyRows.find(row => row.label.toLowerCase() === key);
+                {scoring.analysis.map((item) => {
+                  const colorMap: Record<string, string> = {
+                    sleep: "bg-purple-500",
+                    calories: "bg-orange-400",
+                    protein: "bg-blue-400",
+                    workout: "bg-green-400",
+                    hydration: "bg-cyan-400",
+                    fats: "bg-purple-400",
+                  };
+                  const color = colorMap[item.key] || "bg-blue-400";
+                  
+                  const tone = item.penalty > 0 ? "text-red-600 bg-red-50 border-red-100" : "text-emerald-600 bg-emerald-50 border-emerald-100";
+                  
+                  const displayValue = item.key === "hydration"
+                    ? `${formatLiters(Number(item.logged))} / ${formatLiters(item.target)}L`
+                    : item.key === "workout"
+                      ? (Number(item.logged) > 0 ? `${item.logged} sets done` : "Not done")
+                      : `${item.logged} / ${item.target}${item.unit}`;
+
                   return (
-                    <div key={label}>
+                    <div key={item.label}>
                       <div className="flex justify-between text-xs mb-1">
-                        <span className="text-gray-500">{label}</span>
-                        <span className="font-medium text-gray-700">{val}</span>
+                        <span className="text-gray-500">{item.label} ({Math.round(item.maxPoints)}%)</span>
+                        <span className="font-medium text-gray-700">{displayValue}</span>
                       </div>
                       <div className="w-full bg-gray-100 rounded-full h-1.5">
-                        <div className={`h-1.5 rounded-full ${color} transition-all`} style={{ width: `${Math.min(pct, 100)}%` }} />
+                        <div className={`h-1.5 rounded-full ${color} transition-all`} style={{ width: `${Math.min(item.score, 100)}%` }} />
                       </div>
-                      {insight && (
-                        <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px]">
-                          <span className={`inline-flex items-center rounded-full border px-2 py-0.5 font-semibold ${insight.tone}`}>
-                            {insight.penalty > 0 ? `Penalty: -${insight.penalty.toFixed(1)} pts` : "On target"}
-                          </span>
-                          <span className="text-gray-500">{insight.warning}</span>
-                        </div>
-                      )}
+                      <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px]">
+                        <span className={`inline-flex items-center rounded-full border px-2 py-0.5 font-semibold ${tone}`}>
+                          {item.penalty > 0 ? `Penalty: -${item.penalty.toFixed(1)} pts` : "On target"}
+                        </span>
+                        <span className="text-gray-500">{item.warning}</span>
+                      </div>
                     </div>
                   );
                 })}
@@ -937,9 +836,9 @@ function JourneyContent() {
                 <div>
                   <div className="flex justify-between text-sm mb-1">
                     <span className="text-gray-500 font-medium">Hydration Level</span>
-                    <span className="font-bold text-blue-500">{Math.round(waterScore)}%</span>
+                    <span className="font-bold text-blue-500">{Math.round(scoring.waterScore)}%</span>
                   </div>
-                  <ProgressBar label="" progress={waterScore} colorClass="bg-blue-400" showText={false} />
+                  <ProgressBar label="" progress={scoring.waterScore} colorClass="bg-blue-400" showText={false} />
                 </div>
                 <div className="text-center text-lg font-bold text-gray-900 py-2">
                   {formatLiters(waterIntake)}L <span className="text-gray-500 text-sm font-normal">consumed</span>

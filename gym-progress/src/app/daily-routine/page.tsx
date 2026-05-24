@@ -94,6 +94,7 @@ export default function DailyRoutine() {
   const [wakeTime, setWakeTime] = useState("06:30 AM");
   const [sleepTime, setSleepTime] = useState("10:30 PM");
   const [customTargets, setCustomTargets] = useState<any>(null);
+  const [latestWeight, setLatestWeight] = useState<number>(80);
 
   useEffect(() => {
     const email = localStorage.getItem("userEmail") || "";
@@ -109,6 +110,11 @@ export default function DailyRoutine() {
         setActivePlan(planName);
         setSavedPlans(plans);
         if (planName) {
+          const storedWeights = JSON.parse(localStorage.getItem(`${email}_${planName}_weeklyWeights`) || "[]");
+          const planObj = plans.find((p: any) => p.name === planName);
+          const lastWeightVal = storedWeights.length > 0 ? storedWeights[storedWeights.length - 1].weight : (planObj?.weight || 80);
+          setLatestWeight(lastWeightVal);
+
           if (storedRoutine) {
             try { setAiRoutine(JSON.parse(storedRoutine)); } catch { /* ignore */ }
           }
@@ -154,6 +160,10 @@ export default function DailyRoutine() {
     if (storedRoutine) {
       try { setAiRoutine(JSON.parse(storedRoutine)); } catch { /* ignore */ }
     }
+    const storedWeights = JSON.parse(localStorage.getItem(`${userEmail}_${planName}_weeklyWeights`) || "[]");
+    const planObj = savedPlans.find(p => p.name === planName);
+    const lastWeightVal = storedWeights.length > 0 ? storedWeights[storedWeights.length - 1].weight : (planObj?.weight || 80);
+    setLatestWeight(lastWeightVal);
   };
 
   const currentPlan = savedPlans.find(p => p.name === activePlan);
@@ -175,7 +185,7 @@ export default function DailyRoutine() {
     planDuration,
     goal,
     activityLevel,
-    currentWeight: startWeight,
+    currentWeight: latestWeight,
     sleepTarget: currentPlan?.sleepTarget || 8,
     customTargets,
   });

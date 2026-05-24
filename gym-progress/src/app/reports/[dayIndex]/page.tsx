@@ -17,13 +17,17 @@ export default function DayDetail({ params }: { params: { dayIndex: string } }) 
     const plan = plans.find((p: any) => p.name === planName) || null;
     if (!plan) return null;
 
+    const storedWeights = JSON.parse(localStorage.getItem(`${email}_${planName}_weeklyWeights`) || "[]");
+    const latestWeight = storedWeights.length > 0 ? storedWeights[storedWeights.length - 1].weight : (plan.weight || 80);
+
     const targets = computePlanTargets({
       startWeight: plan.weight || 80,
       goalWeight: plan.goalWeight || plan.weight || 75,
       planDuration: plan.duration || 3,
       goal: plan.goal || "General Fitness",
       activityLevel: plan.activityLevel || "moderate",
-      currentWeight: plan.weight || 80,
+      currentWeight: latestWeight,
+      sleepTarget: plan.sleepTarget || 8,
     });
 
     return {
@@ -31,6 +35,7 @@ export default function DayDetail({ params }: { params: { dayIndex: string } }) 
       targetProtein: targets.targetProtein,
       targetFats: targets.targetFats,
       targetWater: targets.targetHydrationMl,
+      sleepTarget: targets.sleepTarget,
     };
   };
 
@@ -107,7 +112,7 @@ export default function DayDetail({ params }: { params: { dayIndex: string } }) 
             {(() => {
               const targets = computeTargetsFromPlan();
               const metrics = [
-                { key: 'sleepHours', label: 'Sleep', pct: 30, unit: 'h', target: 8, value: dayData.sleepHours ?? 0 },
+                { key: 'sleepHours', label: 'Sleep', pct: 30, unit: 'h', target: targets?.sleepTarget ?? 8, value: dayData.sleepHours ?? 0 },
                 { key: 'calories', label: 'Calories', pct: 25, unit: 'kcal', target: targets?.targetCalories ?? 2619, value: dayData.calories ?? 0 },
                 { key: 'protein', label: 'Protein', pct: 15, unit: 'g', target: targets?.targetProtein ?? 121, value: dayData.protein ?? 0 },
                 { key: 'workout', label: 'Workout', pct: 12, unit: 'sets', target: dayData.expectedSets ?? 6, value: (dayData.exercises?.reduce((acc: any, e: any) => acc + (e.sets || 0), 0) || 0) },
