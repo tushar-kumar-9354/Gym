@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { Download, FileText, FileSpreadsheet, Calendar, BarChart2, CheckCircle2, FileJson, Trophy, Zap, Droplet } from "lucide-react";
-import { proteinTarget } from "@/lib/protein";
+import { computePlanTargets } from "@/lib/planTargets";
 
 export default function ReportsExport() {
   const [userEmail, setUserEmail] = useState("");
@@ -76,26 +76,27 @@ export default function ReportsExport() {
         .sort((a, b) => b.count - a.count)
         .slice(0, 5);
 
-      const computeWaterTarget = (weightKg: number, goal: string, activityLevel: string) => {
-        const base = weightKg * 35;
-        const gainGoal = /muscle|bulk|gain/i.test(goal);
-        const goalBonus = gainGoal ? 500 : 0;
-        const multipliers: Record<string, number> = { sedentary: 1.0, light: 1.1, moderate: 1.2, active: 1.3 };
-        const multiplier = multipliers[activityLevel?.toLowerCase()] ?? 1.2;
-        return Math.round((base + goalBonus) * multiplier);
-      };
-
       const body: any = {
         activePlanName: activePlan,
       };
       if (activePlanObject) {
+        const planTargets = computePlanTargets({
+          startWeight: activePlanObject.weight ?? 80,
+          goalWeight: activePlanObject.goalWeight ?? 75,
+          planDuration: activePlanObject.duration ?? 3,
+          goal: activePlanObject.goal || "General Fitness",
+          activityLevel: activePlanObject.activityLevel || "moderate",
+          currentWeight: activePlanObject.weight ?? 80,
+        });
+
         if (typeof activePlanObject.weight === 'number') body.startWeight = activePlanObject.weight;
         if (typeof activePlanObject.goalWeight === 'number') body.goalWeight = activePlanObject.goalWeight;
         if (typeof activePlanObject.duration === 'number') body.planDuration = activePlanObject.duration;
         if (typeof activePlanObject.targetCalories === 'number') body.targetCalories = activePlanObject.targetCalories;
-        body.targetProtein = proteinTarget(activePlanObject.weight, activePlanObject.goal);
-        if (typeof activePlanObject.goalWeight === 'number') body.targetFats = Math.round((activePlanObject.goalWeight * 2.20462) * 0.4 * 10) / 10;
-        body.targetHydration = computeWaterTarget(activePlanObject.weight, activePlanObject.goal, activePlanObject.activityLevel);
+        body.targetCalories = body.targetCalories ?? planTargets.targetCalories;
+        body.targetProtein = planTargets.targetProtein;
+        body.targetFats = planTargets.targetFats;
+        body.targetHydration = planTargets.targetHydrationMl;
         body.goal = activePlanObject.goal;
         body.activityLevel = activePlanObject.activityLevel;
       }

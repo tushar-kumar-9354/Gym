@@ -8,8 +8,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { Line } from "react-chartjs-2";
-import { proteinTarget, Goal } from "@/lib/protein";
 import { formatLiters } from "@/utils/oneRM";
+import { computePlanTargets } from "@/lib/planTargets";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -54,16 +54,25 @@ interface AIRoutine {
   waterGuidance: string;
 }
 
-/** Scientific water formula: 35ml/kg base + goal bonus + activity multiplier */
-function computeWaterTarget(weightKg: number, goal: string, activityLevel: string): number {
-  const base = weightKg * 35;
-  const gainGoal = /muscle|bulk|gain/i.test(goal);
-  const goalBonus = gainGoal ? 500 : 0;
-  const multipliers: Record<string, number> = {
-    sedentary: 1.0, light: 1.1, moderate: 1.2, active: 1.3,
-  };
-  const multiplier = multipliers[activityLevel?.toLowerCase()] ?? 1.0;
-  return Math.round((base + goalBonus) * multiplier);
+function parseTrajectoryNutrition(description: string, activity: string) {
+  const lower = `${activity} ${description}`.toLowerCase();
+  const calMatch = description.match(/(\d+)\s*(?:kcal|calories|cal)/i);
+  const protMatch = description.match(/(\d+)\s*g\s*protein/i);
+
+  const calories = calMatch ? parseInt(calMatch[1], 10) : 0;
+  const protein = protMatch ? parseInt(protMatch[1], 10) : 0;
+
+  if (calories || protein) {
+    return { calories, protein };
+  }
+
+  if (lower.includes("breakfast")) return { calories: 450, protein: 30 };
+  if (lower.includes("lunch")) return { calories: 650, protein: 45 };
+  if (lower.includes("dinner")) return { calories: 700, protein: 50 };
+  if (lower.includes("snack")) return { calories: 250, protein: 15 };
+  if (lower.includes("workout")) return { calories: 0, protein: 0 };
+
+  return { calories: 0, protein: 0 };
 }
 
 export default function DailyRoutine() {
@@ -153,98 +162,114 @@ export default function DailyRoutine() {
   const planDuration = currentPlan?.duration || 3;
   const goal = currentPlan?.goal || "General Fitness";
   const activityLevel = currentPlan?.activityLevel || "moderate";
-  let sleepTarget = currentPlan?.sleepTarget || 8;
-  if (customTargets?.sleep) sleepTarget = customTargets.sleep;
 
-  const goalWeightLbs = goalWeight * 2.20462;
-  const maintenanceTDEE = goalWeightLbs * 15;
-  const dailyCalorieAdjustment = ((goalWeight - startWeight) * 2.20462 * 3500) / (planDuration * 30);
-  let targetCalories = Math.round(maintenanceTDEE + dailyCalorieAdjustment);
-  if (targetCalories < 1200 && startWeight > goalWeight) targetCalories = 1200;
-  if (customTargets?.calories) targetCalories = customTargets.calories;
+  const {
+    targetCalories,
+    targetProtein,
+    targetFats,
+    targetHydrationMl,
+    sleepTarget,
+  } = computePlanTargets({
+    startWeight,
+    goalWeight,
+    planDuration,
+    goal,
+    activityLevel,
+    currentWeight: startWeight,
+    sleepTarget: currentPlan?.sleepTarget || 8,
+    customTargets,
+  });
 
-  let targetProtein = proteinTarget(startWeight, (goal as Goal) || "maintenance");
-  if (customTargets?.protein) targetProtein = customTargets.protein;
-
-  let targetFats = Math.round(goalWeightLbs * 0.4);
-  if (customTargets?.fats) targetFats = customTargets.fats;
-
-  let waterTargetMl = computeWaterTarget(startWeight, goal, activityLevel);
-  if (customTargets?.water) waterTargetMl = customTargets.water;
+  const waterTargetMl = targetHydrationMl;
 
   // 24-Hour Goal Trajectory Data Generation
   const getTrajectoryChartData = () => {
     if (!aiRoutine) return null;
-    
+
     let cumulativeCal = 0;
     let cumulativeProtein = 0;
-    
+
     const labels: string[] = [];
     const calorieData: number[] = [];
     const proteinData: number[] = [];
     const calorieBaseline: number[] = [];
     const proteinBaseline: number[] = [];
-    
+    const tooltips: string[] = [];
+
     aiRoutine.timetable.forEach((item) => {
-      // Parse calories
-      const calMatch = item.description.match(/(\d+)\s*(?:kcal|calories|cal)/i);
-      const cal = calMatch ? parseInt(calMatch[1], 10) : 0;
-      
-      // Parse protein
-      const protMatch = item.description.match(/(\d+)\s*g\s*protein/i);
-      const prot = protMatch ? parseInt(protMatch[1], 10) : 0;
-      
-      // Update cumulative values if it's a food/meal related activity
-      cumulativeCal += cal;
-      cumulativeProtein += prot;
-      
-      labels.push(item.time);
+      const { calories, protein } = parseTrajectoryNutrition(item.description, item.activity);
+      cumulativeCal += calories;
+      cumulativeProtein += protein;
+
+      labels.push(`${item.time} • ${item.activity}`);
       calorieData.push(cumulativeCal);
       proteinData.push(cumulativeProtein);
       calorieBaseline.push(targetCalories);
       proteinBaseline.push(targetProtein);
+
+      tooltips.push(
+        `${item.activity} (${item.time})\n+${calories} kcal, +${protein}g protein\nCumulative: ${cumulativeCal} kcal / ${cumulativeProtein}g`
+      );
     });
+
+    const lastCal = calorieData[calorieData.length - 1] ?? 0;
+    const lastProtein = proteinData[proteinData.length - 1] ?? 0;
 
     return {
       labels,
+      tooltips,
+      lastCal,
+      lastProtein,
       datasets: [
         {
-          label: "Cumulative Calories (kcal)",
+          label: "Cumulative Calories",
           data: calorieData,
-          borderColor: "rgba(249, 115, 22, 1)", // vibrant orange
-          backgroundColor: "rgba(249, 115, 22, 0.1)",
-          tension: 0.4,
+          borderColor: "rgba(249, 115, 22, 1)",
+          backgroundColor: "rgba(249, 115, 22, 0.12)",
+          tension: 0.35,
           yAxisID: "y",
           fill: true,
+          pointRadius: 5,
+          pointHoverRadius: 7,
+          pointBackgroundColor: "rgba(249, 115, 22, 1)",
         },
         {
-          label: "Calorie Target Baseline",
+          label: "Calories Target",
           data: calorieBaseline,
-          borderColor: "rgba(249, 115, 22, 0.4)",
-          borderDash: [5, 5],
+          borderColor: "rgba(249, 115, 22, 0.35)",
+          borderDash: [6, 6],
           pointRadius: 0,
           yAxisID: "y",
           fill: false,
         },
         {
-          label: "Cumulative Protein (g)",
+          label: "Cumulative Protein",
           data: proteinData,
-          borderColor: "rgba(59, 130, 246, 1)", // deep blue
-          backgroundColor: "rgba(59, 130, 246, 0.1)",
-          tension: 0.4,
+          borderColor: "rgba(59, 130, 246, 1)",
+          backgroundColor: "rgba(59, 130, 246, 0.12)",
+          tension: 0.35,
           yAxisID: "y1",
           fill: true,
+          pointRadius: 5,
+          pointHoverRadius: 7,
+          pointBackgroundColor: "rgba(59, 130, 246, 1)",
         },
         {
-          label: "Protein Target Baseline",
+          label: "Protein Target",
           data: proteinBaseline,
-          borderColor: "rgba(59, 130, 246, 0.4)",
-          borderDash: [5, 5],
+          borderColor: "rgba(59, 130, 246, 0.35)",
+          borderDash: [6, 6],
           pointRadius: 0,
           yAxisID: "y1",
           fill: false,
         },
       ],
+      summary: {
+        caloriesRemaining: Math.max(0, targetCalories - lastCal),
+        proteinRemaining: Math.max(0, targetProtein - lastProtein),
+        caloriesProgress: targetCalories ? Math.round((lastCal / targetCalories) * 100) : 0,
+        proteinProgress: targetProtein ? Math.round((lastProtein / targetProtein) * 100) : 0,
+      },
     };
   };
 
@@ -253,6 +278,10 @@ export default function DailyRoutine() {
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
+    interaction: {
+      mode: "index" as const,
+      intersect: false,
+    },
     plugins: {
       legend: {
         position: "top" as const,
@@ -262,8 +291,28 @@ export default function DailyRoutine() {
         },
       },
       tooltip: {
-        mode: "index" as const,
-        intersect: false,
+        callbacks: {
+          label: (context: any) => {
+            const index = context.dataIndex;
+            if (context.dataset.label === "Cumulative Calories") {
+              return `${context.dataset.label}: ${context.raw} kcal`;
+            }
+            if (context.dataset.label === "Cumulative Protein") {
+              return `${context.dataset.label}: ${context.raw}g`;
+            }
+            if (context.dataset.label === "Calories Target") {
+              return `${context.dataset.label}: ${context.raw} kcal`;
+            }
+            if (context.dataset.label === "Protein Target") {
+              return `${context.dataset.label}: ${context.raw}g`;
+            }
+            return `${context.dataset.label}: ${context.raw}`;
+          },
+          afterBody: (context: any) => {
+            const index = context[0]?.dataIndex ?? 0;
+            return chartData?.tooltips[index] ? [chartData.tooltips[index]] : [];
+          },
+        },
       },
     },
     scales: {
@@ -640,12 +689,24 @@ export default function DailyRoutine() {
                         </div>
                         <div>
                           <h3 className="text-lg font-bold text-gray-900">24-Hour Cumulative Goal Trajectory</h3>
-                          <p className="text-xs text-gray-500">Visualize how each scheduled meal builds up to meet your daily targets.</p>
+                          <p className="text-xs text-gray-500">Each point shows your cumulative progress after that scheduled item so you can see how meals and workouts build toward your daily targets.</p>
                         </div>
                       </div>
                     </div>
                     <div className="h-75 w-full relative">
                       <Line data={chartData} options={chartOptions} />
+                    </div>
+                    <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="bg-orange-50 border border-orange-100 rounded-2xl p-4">
+                        <p className="text-[11px] uppercase tracking-[0.2em] text-orange-700 font-semibold">Calories</p>
+                        <p className="text-lg font-bold text-gray-900 mt-2">{chartData.lastCal} / {targetCalories} kcal</p>
+                        <p className="text-xs text-gray-600 mt-1">{chartData.summary.caloriesProgress}% of your daily calorie target reached. {chartData.summary.caloriesRemaining} kcal remaining.</p>
+                      </div>
+                      <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4">
+                        <p className="text-[11px] uppercase tracking-[0.2em] text-blue-700 font-semibold">Protein</p>
+                        <p className="text-lg font-bold text-gray-900 mt-2">{chartData.lastProtein} / {targetProtein}g</p>
+                        <p className="text-xs text-gray-600 mt-1">{chartData.summary.proteinProgress}% of protein target reached. {chartData.summary.proteinRemaining}g remaining.</p>
+                      </div>
                     </div>
                   </div>
                 )}

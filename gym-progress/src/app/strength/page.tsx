@@ -1,14 +1,15 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import StrengthChart from "@/components/charts/StrengthChart";
-import { Plus, Target, Info, Sparkles, TrendingUp, Award, Activity, Edit2, RotateCcw, Dumbbell } from "lucide-react";
+import { Plus, Target, Info, Sparkles, TrendingUp, Award, Activity, Edit2, RotateCcw, Dumbbell, Trophy } from "lucide-react";
 import ProgressBar from "@/components/ProgressBar";
 import { calculateOneRM, getExerciseTrackingType, formatExerciseValue, ExerciseTrackingType } from "@/utils/oneRM";
 
 interface ExerciseLog {
   id: string;
   exerciseName: string;
+  exercise?: string;
   bodyPart: string;
   weight: number;
   reps: number;
@@ -35,11 +36,12 @@ export default function StrengthTracker() {
   const [selectedDateFilter, setSelectedDateFilter] = useState<string | null>(null);
 
   const [userEmail, setUserEmail] = useState<string>("");
-  const [activePlan, setActivePlan] = useState<string>("");
+  const [activePlan, setActivePlan] = useState<string | null>(null);
   const [logs, setLogs] = useState<ExerciseLog[]>([]);
   const [goals, setGoals] = useState<Record<string, number>>({});
   const [newGoal, setNewGoal] = useState<string>("");
   const [isEditingGoal, setIsEditingGoal] = useState<boolean>(false);
+  const hasInitializedExercise = useRef(false);
 
   // Initialize and load from localStorage
   useEffect(() => {
@@ -91,6 +93,28 @@ export default function StrengthTracker() {
       }
     }
   }, []);
+
+  const todayKey = new Date().toISOString().split("T")[0];
+  const todayLogs = logs.filter(log => (log.date || "").startsWith(todayKey));
+
+  useEffect(() => {
+    if (hasInitializedExercise.current) {
+      return;
+    }
+
+    if (!todayLogs.length) {
+      hasInitializedExercise.current = true;
+      return;
+    }
+
+    const fallback = todayLogs[todayLogs.length - 1];
+    const fallbackName = fallback.exerciseName ?? fallback.exercise ?? "";
+    if (fallbackName && fallbackName.toLowerCase() !== exercise.toLowerCase()) {
+      setExercise(fallbackName);
+    }
+
+    hasInitializedExercise.current = true;
+  }, [exercise, todayLogs]);
 
   // Update default exercise when tab changes
   const handleTabChange = (tab: string) => {
@@ -168,6 +192,56 @@ export default function StrengthTracker() {
   }
 
   const displayChartDates = chartDates.map(d => formatDisplayDate(d));
+
+  const getTrackedMetric = (log: ExerciseLog) => {
+    const trackedType = getExerciseTrackingType(log.exerciseName || log.exercise || "");
+    if (trackedType === "Time") {
+      return log.weight;
+    }
+    if (trackedType === "Reps") {
+      return log.reps;
+    }
+    return calculateOneRM(log.weight, log.reps);
+  };
+
+  const formatMetricChange = (value: number, trackedType: ExerciseTrackingType) => {
+    const sign = value >= 0 ? "+" : "-";
+    return `${sign}${formatExerciseValue(Math.abs(value), trackedType)}`;
+  };
+
+  const exerciseSummary = Object.values(
+    logs.reduce((acc: Record<string, { name: string; type: ExerciseTrackingType; points: ExerciseLog[] }>, log) => {
+      const exerciseName = log.exerciseName || log.exercise || "Unknown Exercise";
+      if (!acc[exerciseName]) {
+        acc[exerciseName] = {
+          name: exerciseName,
+          type: getExerciseTrackingType(exerciseName),
+          points: [],
+        };
+      }
+      acc[exerciseName].points.push(log);
+      return acc;
+    }, {})
+  )
+    .map(({ name, type, points }) => {
+      const sortedPoints = [...points].sort((a, b) => a.timestamp - b.timestamp);
+      const values = sortedPoints.map(getTrackedMetric);
+      const firstValue = values[0] ?? 0;
+      const lastValue = values[values.length - 1] ?? 0;
+      const best = Math.max(...values);
+      const worst = Math.min(...values);
+      const average = values.reduce((sum, value) => sum + value, 0) / values.length;
+
+      return {
+        name,
+        type,
+        best,
+        worst,
+        average,
+        increase: lastValue - firstValue,
+      };
+    })
+    .sort((a, b) => b.best - a.best);
 
   // Calculate stats
   const currentBestValue = chartValues.length > 0 ? Math.max(...chartValues) : 0;
@@ -248,7 +322,7 @@ export default function StrengthTracker() {
     const parts = String(l.date).split(' ');
     if (parts.length >= 2) return `${parts[0]} ${new Date().getFullYear()}`;
     return `Unknown`;
-  }))).filter(Boolean).sort((a: any, b: any) => {
+  }).filter((value): value is string => Boolean(value)))).sort((a: any, b: any) => {
     // sort newest first by parsing year+month
     const ad = new Date(a);
     const bd = new Date(b);
@@ -266,7 +340,7 @@ export default function StrengthTracker() {
       // fallback: if stored as 'May 5'
       if (String(l.date).toLowerCase().includes(mName.toLowerCase())) return l.date;
       return null;
-    }).filter(Boolean)));
+    }).filter((value): value is string => Boolean(value))));
     // sort newest first by timestamp
     return dates.sort((a: any, b: any) => {
       const ta = logs.find((x: any) => x.date === a)?.timestamp ?? 0;
@@ -285,6 +359,12 @@ export default function StrengthTracker() {
         return String(g.date).toLowerCase().includes((selectedMonth.split(' ')[0] || '').toLowerCase());
       });
     }
+
+    const todayGroup = dateGroups.find((g: any) => g.date === todayKey);
+    if (todayGroup) {
+      return [todayGroup, ...dateGroups.filter((g: any) => g.date !== todayKey).slice(0, 2)];
+    }
+
     return dateGroups.slice(0, 3);
   })();
 
@@ -434,57 +514,10 @@ export default function StrengthTracker() {
               Progress bar shows how close your current best lift is to the milestone target.
             </p>
           </section>
-        </div>
-
-        {/* MIDDLE & RIGHT COLUMN: charts, stats, formulas */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Chart Card */}
-          <section className="glass-panel p-6 rounded-2xl border border-border relative">
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h2 className="text-lg font-bold text-slate-950 flex items-center gap-2">
-                  <TrendingUp className="text-blue-600" size={20} />
-                  Strength Trajectory
-                </h2>
-                <p className="text-xs text-slate-500 mt-0.5">Track how your lifting progression evolves over time</p>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="inline-flex rounded-md bg-surface border border-border p-1">
-                  <button
-                    onClick={() => setTrajectoryMode('exercise')}
-                    className={`px-3 py-1 text-xs font-semibold rounded-md ${trajectoryMode === 'exercise' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-blue-50'}`}
-                  >
-                    Exercise
-                  </button>
-                  <button
-                    onClick={() => setTrajectoryMode('bodypart')}
-                    className={`px-3 py-1 text-xs font-semibold rounded-md ${trajectoryMode === 'bodypart' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-blue-50'}`}
-                  >
-                    Bodypart
-                  </button>
-                </div>
-                <div className="text-xs font-bold px-3 py-1.5 bg-surface border border-border rounded-lg text-blue-600 tracking-wide">
-                  {trajectoryMode === 'exercise' ? exercise : `${activeTab} (Aggregate)`}
-                </div>
-              </div>
-            </div>
-            
-            {exerciseLogs.length > 0 ? (
-              <div className="bg-surface p-4 border border-border rounded-xl">
-                <StrengthChart dates={displayChartDates} oneRMs={chartValues} exerciseName={exercise} />
-              </div>
-            ) : (
-              <div className="h-64 flex flex-col items-center justify-center border border-dashed border-border rounded-xl bg-slate-50">
-                <Dumbbell className="text-slate-400 mb-2 animate-bounce" size={32} />
-                <p className="text-sm text-slate-500 font-medium">No recorded lift sessions for {exercise}</p>
-                <p className="text-xs text-slate-400 mt-1">Use the quick log input to register your first set!</p>
-              </div>
-            )}
-          </section>
 
           {/* Logic Blocks: Formula Comparison & Training Zones */}
           {trackingType === "1RM" && current1RM > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 gap-6">
               {/* Scientific Formula Comparison Grid */}
               <section className="glass-panel p-6 rounded-2xl border border-border">
                 <h2 className="text-md font-bold text-slate-950 mb-4 flex items-center gap-1.5">
@@ -540,6 +573,116 @@ export default function StrengthTracker() {
               </section>
             </div>
           ) : null}
+        </div>
+
+        {/* MIDDLE & RIGHT COLUMN: charts, stats, formulas */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Chart Card */}
+          <section className="glass-panel p-6 rounded-2xl border border-border relative">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-lg font-bold text-slate-950 flex items-center gap-2">
+                  <TrendingUp className="text-blue-600" size={20} />
+                  Strength Trajectory
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">Track how your lifting progression evolves over time</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="inline-flex rounded-md bg-surface border border-border p-1">
+                  <button
+                    onClick={() => setTrajectoryMode('exercise')}
+                    className={`px-3 py-1 text-xs font-semibold rounded-md ${trajectoryMode === 'exercise' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-blue-50'}`}
+                  >
+                    Exercise
+                  </button>
+                  <button
+                    onClick={() => setTrajectoryMode('bodypart')}
+                    className={`px-3 py-1 text-xs font-semibold rounded-md ${trajectoryMode === 'bodypart' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-blue-50'}`}
+                  >
+                    Bodypart
+                  </button>
+                </div>
+                <div className="text-xs font-bold px-3 py-1.5 bg-surface border border-border rounded-lg text-blue-600 tracking-wide">
+                  {trajectoryMode === 'exercise' ? exercise : `${activeTab} (Aggregate)`}
+                </div>
+              </div>
+            </div>
+            
+            {exerciseLogs.length > 0 ? (
+              <div className="bg-surface p-4 border border-border rounded-xl">
+                <StrengthChart dates={displayChartDates} oneRMs={chartValues} exerciseName={exercise} />
+              </div>
+            ) : (
+              <div className="h-64 flex flex-col items-center justify-center border border-dashed border-border rounded-xl bg-slate-50">
+                <Dumbbell className="text-slate-400 mb-2 animate-bounce" size={32} />
+                <p className="text-sm text-slate-500 font-medium">No recorded lift sessions for {exercise}</p>
+                <p className="text-xs text-slate-400 mt-1">Use the quick log input to register your first set!</p>
+              </div>
+            )}
+          </section>
+
+          {/* Personal Bests & Strength Summary */}
+          <section className="glass-panel p-6 rounded-2xl border border-border">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
+              <div>
+                <h2 className="text-lg font-bold text-slate-950 flex items-center gap-2">
+                  <Trophy className="text-blue-600" size={18} />
+                  Personal Bests & Strength Summary
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">Best, worst, average, and increase for every logged exercise</p>
+              </div>
+              <span className="inline-flex w-fit items-center rounded-full border border-border bg-surface px-3 py-1 text-xs font-semibold text-slate-600">
+                {exerciseSummary.length} tracked exercises
+              </span>
+            </div>
+
+            {exerciseSummary.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-border bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+                No strength records have been logged yet. Add a workout to see your personal best summary.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-border text-slate-500 text-[11px] font-bold uppercase tracking-wider">
+                        <th className="pb-3 pl-2">Exercise</th>
+                        <th className="pb-3">Best</th>
+                        <th className="pb-3">Worst</th>
+                        <th className="pb-3">Average</th>
+                        <th className="pb-3">Increase</th>
+                      </tr>
+                    </thead>
+                    <tbody className="text-sm divide-y divide-border">
+                      {exerciseSummary.map((item) => (
+                        <tr key={item.name} className="hover:bg-blue-50 transition-colors">
+                          <td className="py-3 pl-2 font-semibold text-slate-900">{item.name}</td>
+                          <td className="py-3 text-slate-700">{formatExerciseValue(item.best, item.type)}</td>
+                          <td className="py-3 text-slate-700">{formatExerciseValue(item.worst, item.type)}</td>
+                          <td className="py-3 text-slate-700">{formatExerciseValue(item.average, item.type)}</td>
+                          <td className={`py-3 font-bold ${item.increase >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                            {formatMetricChange(item.increase, item.type)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="border-t border-border pt-4">
+                  <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2">Personal Best Names</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {exerciseSummary.map((item) => (
+                      <span key={item.name} className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                        <Award className="text-blue-600" size={12} />
+                        {item.name}: {formatExerciseValue(item.best, item.type)}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </section>
 
           {/* Recent History Table */}
           <section className="glass-panel p-6 rounded-2xl border border-border">
@@ -589,11 +732,12 @@ export default function StrengthTracker() {
                             <td className="py-2 font-semibold text-slate-900">{ex.name}</td>
                             <td className="py-2" colSpan={3}></td>
                           </tr>
-                          {ex.sets.slice().reverse().map((s: any) => {
+                          {ex.sets.slice().reverse().map((s: any, setIndex: number) => {
                             const setType = getExerciseTrackingType(s.exerciseName || s.exercise);
                             const est = setType === 'Time' ? s.weight : setType === 'Reps' ? s.reps : calculateOneRM(s.weight, s.reps);
+                            const fallbackKey = `${s.date || 'unknown'}_${s.exerciseName || s.exercise || ex.name}_${s.timestamp || 'no-ts'}_${s.setNumber || setIndex}`;
                             return (
-                              <tr key={s.id} className="hover:bg-blue-50 transition-colors">
+                              <tr key={`${s.id || fallbackKey}-${setIndex}`} className="hover:bg-blue-50 transition-colors">
                                 <td className="py-3 pl-2 font-medium text-slate-700">{formatDisplayDate(s.date)}</td>
                                 <td className="py-3 font-medium text-slate-800">Set {s.setNumber}</td>
                                 <td className="py-3 font-semibold text-slate-950">{setType === 'Time' ? '-' : `${s.weight} kg`}</td>

@@ -4,20 +4,11 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Calendar, FileText, Clock } from "lucide-react";
 import { formatMacroValue } from "@/utils/oneRM";
+import { computePlanTargets } from "@/lib/planTargets";
 
 export default function DayDetail({ params }: { params: { dayIndex: string } }) {
   const [dayData, setDayData] = useState<any | null>(null);
   const [loaded, setLoaded] = useState(false);
-
-  // compute water target using same formula as daily-routine
-  const computeWaterTarget = (weightKg: number, goal: string, activityLevel: string) => {
-    const base = weightKg * 35;
-    const gainGoal = /muscle|bulk|gain/i.test(goal);
-    const goalBonus = gainGoal ? 500 : 0;
-    const multipliers: Record<string, number> = { sedentary: 1.0, light: 1.1, moderate: 1.2, active: 1.3 };
-    const multiplier = multipliers[activityLevel?.toLowerCase()] ?? 1.0;
-    return Math.round((base + goalBonus) * multiplier);
-  };
 
   const computeTargetsFromPlan = () => {
     const email = localStorage.getItem("userEmail") || "";
@@ -25,23 +16,22 @@ export default function DayDetail({ params }: { params: { dayIndex: string } }) 
     const plans = JSON.parse(localStorage.getItem(`${email}_plans`) || "[]");
     const plan = plans.find((p: any) => p.name === planName) || null;
     if (!plan) return null;
-    const startWeight = plan.weight || 80;
-    const goalWeight = plan.goalWeight || startWeight;
-    const planDuration = plan.duration || 3;
-    const goal = plan.goal || "General Fitness";
-    const activityLevel = plan.activityLevel || "moderate";
 
-    const goalWeightLbs = goalWeight * 2.20462;
-    const maintenanceTDEE = goalWeightLbs * 15;
-    const dailyCalorieAdjustment = ((goalWeight - startWeight) * 2.20462 * 3500) / (planDuration * 30);
-    let targetCalories = Math.round(maintenanceTDEE + dailyCalorieAdjustment);
-    if (targetCalories < 1200 && startWeight > goalWeight) targetCalories = 1200;
+    const targets = computePlanTargets({
+      startWeight: plan.weight || 80,
+      goalWeight: plan.goalWeight || plan.weight || 75,
+      planDuration: plan.duration || 3,
+      goal: plan.goal || "General Fitness",
+      activityLevel: plan.activityLevel || "moderate",
+      currentWeight: plan.weight || 80,
+    });
 
-    const targetProtein = Math.round(startWeight * 1.8);
-    const targetFats = Math.round(goalWeightLbs * 0.4);
-    const targetWater = computeWaterTarget(startWeight, goal, activityLevel);
-
-    return { targetCalories, targetProtein, targetFats, targetWater };
+    return {
+      targetCalories: targets.targetCalories,
+      targetProtein: targets.targetProtein,
+      targetFats: targets.targetFats,
+      targetWater: targets.targetHydrationMl,
+    };
   };
 
   useEffect(() => {

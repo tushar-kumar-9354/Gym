@@ -1,14 +1,14 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { proteinTarget, Goal } from "@/lib/protein";
 import ProgressBar from "@/components/ProgressBar";
 import { Flame, Plus, Target, ChevronDown, Scale, AlertCircle, TrendingUp, BarChart2, Coffee, Dumbbell, Droplets, ArrowRight, Moon, Trophy, Sparkles } from "lucide-react";
 import Link from "next/link";
 import StrengthChart from "@/components/charts/StrengthChart";
 import GoalChart from "@/components/charts/GoalChart";
-import { getExerciseTrackingType, formatExerciseValue, formatMacroValue, roundToOneDecimal, formatLiters } from "@/utils/oneRM";
+import { getExerciseTrackingType, formatExerciseValue, formatMacroValue, formatLiters } from "@/utils/oneRM";
 import { computeGoldilocksScores } from "@/lib/scoring";
+import { computePlanTargets } from "@/lib/planTargets";
 
 export default function Dashboard() {
   const TEST_MODE = true; // set to true for rapid testing
@@ -46,6 +46,10 @@ export default function Dashboard() {
   // Form for weekly weight
   const [newWeeklyWeight, setNewWeeklyWeight] = useState("");
   const [showPenaltyDetails, setShowPenaltyDetails] = useState(false);
+  const [showWeightEditor, setShowWeightEditor] = useState(false);
+  const [selectedWeightEntryDate, setSelectedWeightEntryDate] = useState("");
+  const [editWeightValue, setEditWeightValue] = useState("");
+  const [updateStatus, setUpdateStatus] = useState("");
 
   // Set View Toggle
   const [setViewMode, setSetViewMode] = useState<"Today" | "Yesterday">("Today");
@@ -57,6 +61,20 @@ export default function Dashboard() {
     Shoulders: ["Overhead Press", "Lateral Raises"],
     Arms: ["Bicep Curls", "Tricep Pushdowns"],
     Abs: ["Plank", "Crunches", "Leg Raises", "Russian Twists"],
+  };
+
+  const getWeightDateKey = (value: string) => new Date(value).toISOString().split("T")[0];
+
+  const normalizeWeeklyWeights = (weights: { date: string; weight: number }[]) =>
+    [...weights]
+      .filter((entry) => typeof entry?.weight === "number" && Number.isFinite(entry.weight))
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+  const persistWeeklyWeights = (nextWeights: { date: string; weight: number }[]) => {
+    if (!userEmail || !activePlan) return;
+    const normalized = normalizeWeeklyWeights(nextWeights);
+    localStorage.setItem(`${userEmail}_${activePlan}_weeklyWeights`, JSON.stringify(normalized));
+    setWeeklyWeights(normalized);
   };
 
   useEffect(() => {
@@ -92,7 +110,7 @@ export default function Dashboard() {
       }));
 
       meals = JSON.parse(localStorage.getItem(`${email}_${plan}_loggedMeals`) || "[]");
-      weights = JSON.parse(localStorage.getItem(`${email}_${plan}_weeklyWeights`) || "[]");
+      weights = normalizeWeeklyWeights(JSON.parse(localStorage.getItem(`${email}_${plan}_weeklyWeights`) || "[]"));
       sleep = JSON.parse(localStorage.getItem(`${email}_${plan}_sleepLogs`) || "{}");
       sleepTargetVal = currentPlan.sleepTarget || 8;
 
@@ -143,6 +161,21 @@ export default function Dashboard() {
     });
   }, []);
 
+  useEffect(() => {
+    if (!weeklyWeights.length) {
+      setSelectedWeightEntryDate("");
+      setEditWeightValue("");
+      return;
+    }
+
+    const currentSelection = weeklyWeights.find((entry) => getWeightDateKey(entry.date) === selectedWeightEntryDate);
+    if (!currentSelection) {
+      const latestEntry = weeklyWeights[weeklyWeights.length - 1];
+      setSelectedWeightEntryDate(getWeightDateKey(latestEntry.date));
+      setEditWeightValue(String(latestEntry.weight));
+    }
+  }, [selectedWeightEntryDate, weeklyWeights]);
+
   const handlePlanChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const planName = e.target.value;
     localStorage.setItem(`${userEmail}_activePlan`, planName);
@@ -168,6 +201,10 @@ export default function Dashboard() {
     if (!userEmail || !activePlan || !newWeeklyWeight) return;
 
     const weightVal = parseFloat(newWeeklyWeight);
+    if (!Number.isFinite(weightVal) || weightVal <= 0) {
+      alert("Please enter a valid positive weight.");
+      return;
+    }
 
     // Limit weight difference to no more than 10kg
     const lastWeight = weeklyWeights.length > 0 ? weeklyWeights[weeklyWeights.length - 1].weight : startWeight;
@@ -178,9 +215,8 @@ export default function Dashboard() {
     }
 
     const newEntry = { date: new Date().toISOString(), weight: weightVal };
-    const updatedWeights = [...weeklyWeights, newEntry];
-    localStorage.setItem(`${userEmail}_${activePlan}_weeklyWeights`, JSON.stringify(updatedWeights));
-    setWeeklyWeights(updatedWeights);
+    const updatedWeights = normalizeWeeklyWeights([...weeklyWeights, newEntry]);
+    persistWeeklyWeights(updatedWeights);
 
     // Calculate expected weight today to evaluate recommendation
     const startObj = planStartDate ? new Date(planStartDate) : new Date();
@@ -304,6 +340,41 @@ export default function Dashboard() {
     setNewWeeklyWeight("");
   };
 
+  const handleUpdateWeightEntry = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userEmail || !activePlan) return;
+
+    const selectedEntry = weeklyWeights.find((entry) => getWeightDateKey(entry.date) === selectedWeightEntryDate);
+    const updatedWeight = parseFloat(editWeightValue);
+
+    if (!selectedEntry) {
+      alert("Please choose a logged weight entry to update.");
+      return;
+    }
+
+    if (!Number.isFinite(updatedWeight) || updatedWeight <= 0) {
+      alert("Please enter a valid positive weight.");
+      return;
+    }
+
+    const confirmUpdate = window.confirm(
+      `Update ${new Date(selectedEntry.date).toLocaleDateString()} to ${updatedWeight} kg? This will refresh the goal trajectory graph.`
+    );
+
+    if (!confirmUpdate) return;
+
+    const updatedWeights = normalizeWeeklyWeights(
+      weeklyWeights.map((entry) =>
+        getWeightDateKey(entry.date) === selectedWeightEntryDate
+          ? { ...entry, weight: updatedWeight }
+          : entry
+      )
+    );
+
+    persistWeeklyWeights(updatedWeights);
+    setUpdateStatus(`Updated ${new Date(selectedEntry.date).toLocaleDateString()} to ${updatedWeight} kg.`);
+  };
+
   const handleConfirmAndApply = () => {
     if (!userEmail || !activePlan || !aiRecommendation?.targets) return;
 
@@ -397,45 +468,31 @@ export default function Dashboard() {
 
   // --- Complex Target Calculations ---
   const goalWeightLbs = goalWeight * 2.20462;
-  const maintenanceTDEE = goalWeightLbs * 15;
-  const dailyCalorieAdjustment = ((goalWeight - startWeight) * 2.20462 * 3500) / (planDuration * 30);
-  let targetCalories = Math.round(maintenanceTDEE + dailyCalorieAdjustment);
-  if (targetCalories < 1200 && startWeight > goalWeight) targetCalories = 1200; // Safety floor
-  if (customTargets?.calories) {
-    targetCalories = customTargets.calories;
-  }
+  const sortedWeeklyWeights = normalizeWeeklyWeights(weeklyWeights);
+  const currentActualWeight = sortedWeeklyWeights.length > 0 ? sortedWeeklyWeights[sortedWeeklyWeights.length - 1].weight : startWeight;
 
-  const currentActualWeight = weeklyWeights.length > 0 ? weeklyWeights[weeklyWeights.length - 1].weight : startWeight;
-  // Use centralized protein target (Day Analysis standard via lib)
-  let targetProtein = proteinTarget(currentActualWeight, (currentPlan?.goal as Goal) || "maintenance");
-  if (customTargets?.protein) {
-    targetProtein = customTargets.protein;
-  }
-  let targetFats = roundToOneDecimal(goalWeightLbs * 0.4);
-  if (customTargets?.fats) {
-    targetFats = customTargets.fats;
-  }
+  const {
+    targetCalories,
+    targetProtein,
+    targetFats,
+    targetHydrationMl,
+    sleepTarget: sleepTargetVal,
+  } = computePlanTargets({
+    startWeight,
+    goalWeight,
+    planDuration,
+    goal,
+    activityLevel,
+    currentWeight: currentActualWeight,
+    sleepTarget,
+    customTargets,
+  });
 
   const displayCurrentProtein = formatMacroValue(currentProtein);
   const displayTargetProtein = formatMacroValue(targetProtein);
   const displayCurrentFats = formatMacroValue(currentFats);
   const displayTargetFats = formatMacroValue(targetFats);
-
-  // Dynamic scientific water target formula
-  const baseHydration = currentActualWeight * 35;
-  const gainGoalHydration = /muscle|bulk|gain/i.test(goal);
-  const goalBonusHydration = gainGoalHydration ? 500 : 0;
-  const hydrationMultipliers: Record<string, number> = { sedentary: 1.0, light: 1.1, moderate: 1.2, active: 1.3 };
-  const hydrationMultiplier = hydrationMultipliers[activityLevel?.toLowerCase()] ?? 1.2;
-  let targetHydration = Math.round((baseHydration + goalBonusHydration) * hydrationMultiplier);
-  if (customTargets?.water) {
-    targetHydration = customTargets.water;
-  }
-
-  let sleepTargetVal = sleepTarget;
-  if (customTargets?.sleep) {
-    sleepTargetVal = customTargets.sleep;
-  }
+  const targetHydration = targetHydrationMl;
 
   // --- Dynamic Scores for 6-metric Grid using Goldilocks Zone Penalty Rule ---
   const warningsList: { metric: string; msg: string; severity: "warning" | "penalty" }[] = [];
@@ -647,42 +704,10 @@ export default function Dashboard() {
         : 'Great gains! Make sure protein intake is high (1g/lb) and progressive overload is driving the growth — not just calorie excess.';
     }
   }
-  const chartDates: string[] = [];
-  const targetWeight: number[] = [];
-  const actualWeight: (number | null)[] = [];
-  const weightDiff = startWeight - goalWeight;
-
-  for (let i = 0; i <= totalDays; i++) {
-    chartDates.push(`Day ${i}`);
-    targetWeight.push(startWeight - (weightDiff * (i / totalDays)));
-
-    let logForDay = null;
-    if (TEST_MODE) {
-      if (i % 7 === 0) {
-        const idx = i / 7;
-        if (idx < weeklyWeights.length) {
-          logForDay = weeklyWeights[idx].weight;
-        }
-      }
-    } else {
-      if (weeklyWeights.length > 0) {
-        const startDate = new Date(weeklyWeights[0].date);
-        const targetDate = new Date(startDate);
-        targetDate.setDate(targetDate.getDate() + i);
-
-        const match = weeklyWeights.find(w => {
-          const d = new Date(w.date);
-          return d.getDate() === targetDate.getDate() && d.getMonth() === targetDate.getMonth() && d.getFullYear() === targetDate.getFullYear();
-        });
-        if (match) logForDay = match.weight;
-      }
-    }
-
-    if (i === 0 && !logForDay) {
-      logForDay = startWeight;
-    }
-    actualWeight.push(logForDay);
-  }
+  const displayedWeeklyWeights = sortedWeeklyWeights.slice(-7);
+  const chartDates = displayedWeeklyWeights.map((entry) => new Date(entry.date).toLocaleDateString("en-US"));
+  const actualWeight = displayedWeeklyWeights.map((entry) => entry.weight);
+  const targetWeight = chartDates.length > 0 ? Array(chartDates.length).fill(goalWeight) : [goalWeight];
 
   const isWithinGoal = Math.abs(currentActualWeight - goalWeight) <= 2.5;
 
@@ -1140,26 +1165,105 @@ export default function Dashboard() {
                   <ProgressBar label="" progress={workoutScore} colorClass="bg-blue-500" showText={false} />
                 </div>
 
-                {showWeighInForm ? (
-                  <form onSubmit={handleAddWeeklyWeight} className="flex gap-2 mt-4 pt-4 border-t border-gray-50">
-                    <input
-                      type="number"
-                      value={newWeeklyWeight}
-                      onChange={(e) => setNewWeeklyWeight(e.target.value)}
-                      placeholder="Log weight (kg)"
-                      required
-                      className="bg-gray-50 border border-gray-100 rounded-lg py-2 px-3 focus:outline-none focus:border-blue-500 text-sm flex-1 text-gray-900"
-                    />
-                    <button type="submit" className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
-                      Log
-                    </button>
-                  </form>
-                ) : (
-                  <div className="mt-4 pt-4 border-t border-gray-50 text-center bg-gray-50 rounded-lg p-3">
-                    <span className="text-sm font-medium text-gray-600 block">Next weigh-in in</span>
-                    <span className="text-2xl font-bold text-blue-500 block mt-1">{nextWeighInDays} <span className="text-sm font-medium">days</span></span>
+                <div className="mt-4 pt-4 border-t border-gray-50 space-y-3">
+                  {showWeighInForm ? (
+                    <form onSubmit={handleAddWeeklyWeight} className="flex gap-2">
+                      <input
+                        type="number"
+                        value={newWeeklyWeight}
+                        onChange={(e) => setNewWeeklyWeight(e.target.value)}
+                        placeholder="Log weight (kg)"
+                        required
+                        className="bg-gray-50 border border-gray-100 rounded-lg py-2 px-3 focus:outline-none focus:border-blue-500 text-sm flex-1 text-gray-900"
+                      />
+                      <button type="submit" className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                        Log
+                      </button>
+                    </form>
+                  ) : (
+                    <div className="text-center bg-gray-50 rounded-lg p-3">
+                      <span className="text-sm font-medium text-gray-600 block">Next weigh-in in</span>
+                      <span className="text-2xl font-bold text-blue-500 block mt-1">{nextWeighInDays} <span className="text-sm font-medium">days</span></span>
+                    </div>
+                  )}
+
+                  <div className="bg-gray-50 rounded-2xl p-3 border border-gray-100">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-800">Goal Trajectory Data Controls</p>
+                        <p className="text-xs text-gray-500">Use this to correct a mistaken weigh-in and refresh the 7-day graph immediately.</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowWeightEditor((value) => !value)}
+                        className="text-xs font-semibold text-blue-600 bg-white border border-blue-100 rounded-full px-3 py-1.5 hover:bg-blue-50 transition-colors"
+                      >
+                        {showWeightEditor ? "Hide editor" : "Edit logged day"}
+                      </button>
+                    </div>
+
+                    {showWeightEditor && (
+                      <form onSubmit={handleUpdateWeightEntry} className="mt-3 space-y-3">
+                        {sortedWeeklyWeights.length === 0 ? (
+                          <p className="text-xs text-gray-500">No weigh-ins are available yet. Log one above to unlock corrections.</p>
+                        ) : (
+                          <>
+                            <div className="space-y-1">
+                              <label className="text-xs font-semibold text-gray-600">Choose logged day</label>
+                              <select
+                                value={selectedWeightEntryDate}
+                                onChange={(e) => {
+                                  setSelectedWeightEntryDate(e.target.value);
+                                  const selected = sortedWeeklyWeights.find((entry) => getWeightDateKey(entry.date) === e.target.value);
+                                  setEditWeightValue(selected ? String(selected.weight) : "");
+                                }}
+                                className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:border-blue-500"
+                              >
+                                {sortedWeeklyWeights.map((entry) => (
+                                  <option key={entry.date} value={getWeightDateKey(entry.date)}>
+                                    {new Date(entry.date).toLocaleDateString()} - {entry.weight} kg
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div className="space-y-1">
+                              <label className="text-xs font-semibold text-gray-600">Corrected weight (kg)</label>
+                              <input
+                                type="number"
+                                value={editWeightValue}
+                                onChange={(e) => setEditWeightValue(e.target.value)}
+                                placeholder="Enter corrected weight"
+                                required
+                                className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-blue-500"
+                              />
+                            </div>
+
+                            <div className="flex flex-col sm:flex-row gap-2">
+                              <button
+                                type="submit"
+                                className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+                              >
+                                Confirm correction
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setShowWeightEditor(false)}
+                                className="bg-white border border-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+                              >
+                                Close
+                              </button>
+                            </div>
+
+                            {updateStatus && (
+                              <p className="text-xs text-green-600 font-medium">{updateStatus}</p>
+                            )}
+                          </>
+                        )}
+                      </form>
+                    )}
                   </div>
-                )}
+                </div>
 
                 {loadingRecommendation && (
                   <div className="mt-4 pt-4 border-t border-gray-100 space-y-4 animate-pulse">

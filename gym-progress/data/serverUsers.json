@@ -1,11 +1,11 @@
 [
   {
-    "email": "jangratushar348@gmail.com",
-    "name": "tushar",
+    "email": "tusharsilotia1@gmail.com",
+    "name": "test",
     "role": "client",
-    "passwordHash": "5e707f67aab34ab3c42fd940998c64a723e2a928cd99a09836a507b77124b35b",
+    "passwordHash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
     "status": "active",
-    "validUntil": "2026-06-23T06:50:36.748Z",
-    "createdAt": "2026-05-23T06:50:36.749Z"
+    "validUntil": "2026-06-24T09:46:25.187Z",
+    "createdAt": "2026-05-24T09:46:25.188Z"
   }
 ]

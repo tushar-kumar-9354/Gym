@@ -73,9 +73,10 @@ export function computeGoldilocksScores(input: ScoringInputs): ScoringResult {
     sleepPoints = 0;
     sleepScore = 0;
   } else {
-    // Use the formula: SleepScore% = min((D / H) * 100, 100) * Q_w
-    const H = 8; // optimal baseline hours
-    const durationPercent = Math.min((hours / H) * 100, 100);
+    // Use the user-specific sleep target as the center of the Goldilocks zone,
+    // and penalize both under-sleep and over-sleep symmetrically.
+    const targetHours = Math.max(4, sleepTarget || 8);
+    const durationPercent = Math.max(0, 100 - (Math.abs(hours - targetHours) / targetHours) * 100);
     const rawScore = durationPercent * qualityFactor; // 0-100 scaled by quality
     sleepScore = Math.round(rawScore * 10) / 10; // keep one decimal percent
     // Convert percent to points out of 30 for the existing points system

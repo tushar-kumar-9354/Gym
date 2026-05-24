@@ -17,6 +17,7 @@ import {
 } from "chart.js";
 import { BarChart2, PieChart, TrendingUp, Droplet, Dumbbell, Coffee, Sparkles, Target, Moon } from "lucide-react";
 import { getExerciseTrackingType, formatExerciseValue } from "@/utils/oneRM";
+import { getHydrationTarget } from "@/lib/planTargets";
 
 ChartJS.register(
   CategoryScale,
@@ -46,6 +47,8 @@ export default function Visualise() {
   const [goalWeight, setGoalWeight] = useState(75);
   const [startWeight, setStartWeight] = useState(80);
   const [currentWeight, setCurrentWeight] = useState(80);
+  const [goal, setGoal] = useState("General Fitness");
+  const [activityLevel, setActivityLevel] = useState("moderate");
 
   // Strength Chart States
   const [selectedBodyPart, setSelectedBodyPart] = useState("Chest");
@@ -87,6 +90,8 @@ export default function Visualise() {
         setStartWeight(currentPlan.weight);
         setGoalWeight(currentPlan.goalWeight);
         setCurrentWeight(currentPlan.weight); // Fallback
+        setGoal(currentPlan.goal || "General Fitness");
+        setActivityLevel(currentPlan.activityLevel || "moderate");
       }
 
       const savedCustomEx = JSON.parse(localStorage.getItem(`${email}_customExercises`) || "{}");
@@ -113,7 +118,7 @@ export default function Visualise() {
     setSelectedExercise(available[0] || "");
   };
 
-  const waterTarget = Math.round(currentWeight * 35); // 35ml per kg
+  const waterTarget = getHydrationTarget(currentWeight, goal, activityLevel);
 
   // 1. Process Weight Data (with Target Baseline)
   const weightDates = weeklyWeights.map(w => new Date(w.date).toLocaleDateString('en-US'));
