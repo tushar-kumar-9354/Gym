@@ -25,7 +25,7 @@ ChartJS.register(
 
 interface GoalChartProps {
   dates: string[];
-  actualData: number[];
+  actualData: Array<number | null>;
   targetData: number[];
   label: string;
 }
@@ -73,6 +73,7 @@ export default function GoalChart({ dates, actualData, targetData, label }: Goal
         intersect: false,
       },
     },
+    spanGaps: false,
     scales: {
       y: {
         grid: { color: "#f3f4f6" },

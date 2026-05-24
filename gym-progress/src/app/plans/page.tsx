@@ -77,6 +77,8 @@ export default function Plans() {
       localStorage.setItem(`${userEmail}_activePlan`, name); // Set as active
       setActivePlan(name);
     }
+
+    window.dispatchEvent(new CustomEvent("gym-plan-updated"));
     
     setSavedPlans(updatedPlans);
     setShowForm(false);

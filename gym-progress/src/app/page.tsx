@@ -11,10 +11,60 @@ import { computeGoldilocksScores } from "@/lib/scoring";
 import { computePlanTargets } from "@/lib/planTargets";
 
 export default function Dashboard() {
-  const TEST_MODE = true; // set to true for rapid testing
+  const TEST_MODE = true; // enable rapid testing so weigh-ins reappear after 3 seconds
   const [activePlan, setActivePlan] = useState<string | null>(null);
   const [userName, setUserName] = useState("User");
   const [userEmail, setUserEmail] = useState("");
+
+  const getWeightProgressPercentage = (currentWeight: number, startWeightValue: number, goalWeightValue: number) => {
+    if (startWeightValue === goalWeightValue) return 100;
+
+    const totalRange = Math.abs(startWeightValue - goalWeightValue);
+    if (totalRange === 0) return 100;
+
+    const progress = startWeightValue > goalWeightValue
+      ? ((startWeightValue - currentWeight) / totalRange) * 100
+      : ((currentWeight - startWeightValue) / totalRange) * 100;
+
+    return Math.max(0, Math.min(100, progress));
+  };
+
+  const buildGoalTrajectory = (
+    startDate: string | null,
+    durationMonths: number,
+    weights: { date: string; weight: number }[]
+  ) => {
+    const start = startDate ? new Date(startDate) : new Date();
+    const end = new Date(start);
+    end.setMonth(end.getMonth() + durationMonths);
+
+    const normalizedWeights = normalizeWeeklyWeights(weights);
+    const weightMap = new Map(normalizedWeights.map((entry) => [getWeightDateKey(entry.date), entry.weight]));
+    const dates: Date[] = [];
+    const actualData: number[] = [];
+    const targetData: number[] = [];
+
+    let lastKnownWeight = normalizedWeights.length > 0 ? normalizedWeights[0].weight : startWeight;
+
+    for (let current = new Date(start); current <= end; current.setDate(current.getDate() + 7)) {
+      const key = getWeightDateKey(current.toISOString().split("T")[0]);
+      const exactWeight = weightMap.get(key);
+
+      if (typeof exactWeight === "number") {
+        lastKnownWeight = exactWeight;
+      }
+
+      dates.push(new Date(current));
+      actualData.push(lastKnownWeight);
+
+      const daysSinceStart = Math.max(0, Math.floor((current.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
+      const safeTotalDays = Math.max(1, durationMonths * 30);
+      const expectedWeight = startWeight - ((startWeight - goalWeight) * (daysSinceStart / safeTotalDays));
+      targetData.push(expectedWeight);
+    }
+
+    return { dates, actualData, targetData };
+  };
 
   // Exercise States for Chart
   const [selectedBodyPart, setSelectedBodyPart] = useState("Chest");
@@ -70,6 +120,59 @@ export default function Dashboard() {
       .filter((entry) => typeof entry?.weight === "number" && Number.isFinite(entry.weight))
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
+  const getPlanEndDate = () => {
+    const start = planStartDate ? new Date(planStartDate) : new Date();
+    const end = new Date(start);
+    end.setMonth(end.getMonth() + planDuration);
+    return end;
+  };
+
+  const getLatestWeightEntryDate = (weights = weeklyWeights) => {
+    const normalized = normalizeWeeklyWeights(weights);
+    return normalized.length > 0 ? new Date(normalized[normalized.length - 1].date) : null;
+  };
+
+  const getLatestPastWeightEntryDate = (weights = weeklyWeights) => {
+    const now = new Date();
+    const normalized = normalizeWeeklyWeights(weights).filter((entry) => new Date(entry.date) <= now);
+    return normalized.length > 0 ? new Date(normalized[normalized.length - 1].date) : null;
+  };
+
+  const getRequiredWeeklyLogs = () => Math.ceil((planDuration * 30) / 7) + 1;
+
+  const getCurrentTrackedWeight = (weights = weeklyWeights) => {
+    const normalized = normalizeWeeklyWeights(weights);
+    if (normalized.length === 0) return startWeight;
+
+    if (TEST_MODE) {
+      return normalized[normalized.length - 1].weight;
+    }
+
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+
+    const activeWeights = normalized.filter((entry) => new Date(entry.date) <= now);
+    return activeWeights.length > 0 ? activeWeights[activeWeights.length - 1].weight : startWeight;
+  };
+
+  const getTestModeWeightDate = () => {
+    if (!TEST_MODE) {
+      return new Date().toISOString();
+    }
+
+    const latestDate = getLatestWeightEntryDate();
+    const baseDate = latestDate ? new Date(latestDate) : new Date();
+    const scheduledDate = new Date(baseDate);
+    scheduledDate.setDate(scheduledDate.getDate() + 7);
+
+    const planEnd = getPlanEndDate();
+    if (scheduledDate > planEnd) {
+      scheduledDate.setTime(planEnd.getTime());
+    }
+
+    return scheduledDate.toISOString();
+  };
+
   const persistWeeklyWeights = (nextWeights: { date: string; weight: number }[]) => {
     if (!userEmail || !activePlan) return;
     const normalized = normalizeWeeklyWeights(nextWeights);
@@ -77,88 +180,110 @@ export default function Dashboard() {
     setWeeklyWeights(normalized);
   };
 
-  useEffect(() => {
+  const loadPlanState = () => {
     const email = localStorage.getItem("userEmail") || "";
     const name = localStorage.getItem("userName");
     const plan = email ? localStorage.getItem(`${email}_activePlan`) : null;
     const plans = email ? JSON.parse(localStorage.getItem(`${email}_plans`) || "[]") : [];
     const currentPlan = plans.find((p: any) => p.name === plan);
-    
-    let startW = 80;
-    let goalW = 75;
-    let duration = 3;
-    let startDate = null;
+    const savedCustomEx = email ? JSON.parse(localStorage.getItem(`${email}_customExercises`) || "{}") : {};
+
+    if (!currentPlan) {
+      setUserEmail(email);
+      if (name) setUserName(name);
+      setActivePlan(plan);
+      setSavedPlans(plans);
+      setStartWeight(80);
+      setGoalWeight(75);
+      setPlanDuration(3);
+      setPlanStartDate(null);
+      setExerciseLogs([]);
+      setLoggedMeals([]);
+      setWeeklyWeights([]);
+      setSleepLogs({});
+      setSleepTarget(8);
+      setLoggedWater(0);
+      setCustomTargets(null);
+      setCustomExerciseDB(savedCustomEx);
+      return;
+    }
+
+    let startW = currentPlan.weight;
+    let goalW = currentPlan.goalWeight;
+    let duration = currentPlan.duration;
+    let startDate = currentPlan.date || new Date().toISOString();
     let logs: any[] = [];
     let meals: any[] = [];
     let weights: any[] = [];
     let sleep: Record<string, any> = {};
-    let sleepTargetVal = 8;
+    let sleepTargetVal = currentPlan.sleepTarget || 8;
     let waterVal = 0;
     let customT: any = null;
-    
-    if (currentPlan) {
-      startW = currentPlan.weight;
-      goalW = currentPlan.goalWeight;
-      duration = currentPlan.duration;
-      startDate = currentPlan.date || new Date().toISOString();
 
-      const rawLogs = JSON.parse(localStorage.getItem(`${email}_${plan}_exerciseLogs`) || "[]");
-      logs = rawLogs.map((l: any) => ({
-        ...l,
-        date: typeof l.date === 'string' && l.date.length > 10 ? l.date.split('T')[0] : l.date,
-        setNumber: l.setNumber ?? 1,
-      }));
+    const rawLogs = JSON.parse(localStorage.getItem(`${email}_${plan}_exerciseLogs`) || "[]");
+    logs = rawLogs.map((l: any) => ({
+      ...l,
+      date: typeof l.date === 'string' && l.date.length > 10 ? l.date.split('T')[0] : l.date,
+      setNumber: l.setNumber ?? 1,
+    }));
 
-      meals = JSON.parse(localStorage.getItem(`${email}_${plan}_loggedMeals`) || "[]");
-      weights = normalizeWeeklyWeights(JSON.parse(localStorage.getItem(`${email}_${plan}_weeklyWeights`) || "[]"));
-      sleep = JSON.parse(localStorage.getItem(`${email}_${plan}_sleepLogs`) || "{}");
-      sleepTargetVal = currentPlan.sleepTarget || 8;
+    meals = JSON.parse(localStorage.getItem(`${email}_${plan}_loggedMeals`) || "[]");
+    weights = normalizeWeeklyWeights(JSON.parse(localStorage.getItem(`${email}_${plan}_weeklyWeights`) || "[]"));
+    sleep = JSON.parse(localStorage.getItem(`${email}_${plan}_sleepLogs`) || "{}");
 
-      // Read water intake - check both formats for compatibility
-      // New format: waterIntake JSON object (Journey page)
-      const waterIntakeObj = JSON.parse(localStorage.getItem(`${email}_${plan}_waterIntake`) || "{}");
-      waterVal = waterIntakeObj[new Date().toISOString().split('T')[0]] || 0;
+    const waterIntakeObj = JSON.parse(localStorage.getItem(`${email}_${plan}_waterIntake`) || "{}");
+    waterVal = waterIntakeObj[new Date().toISOString().split('T')[0]] || 0;
 
-      const storedCustom = localStorage.getItem(`${email}_${plan}_customTargets`);
-      if (storedCustom) {
-        try {
-          const parsed = JSON.parse(storedCustom);
-          if (parsed && typeof parsed === "object") {
-            if (parsed.protein && (typeof parsed.protein !== "number" || parsed.protein < 30 || parsed.protein > 500)) delete parsed.protein;
-            if (parsed.calories && (typeof parsed.calories !== "number" || parsed.calories < 1000 || parsed.calories > 10000)) delete parsed.calories;
-            if (parsed.fats && (typeof parsed.fats !== "number" || parsed.fats < 20 || parsed.fats > 300)) delete parsed.fats;
-            if (parsed.water && (typeof parsed.water !== "number" || parsed.water < 1000 || parsed.water > 10000)) delete parsed.water;
-            if (parsed.sleep && (typeof parsed.sleep !== "number" || parsed.sleep < 4 || parsed.sleep > 16)) delete parsed.sleep;
-            customT = parsed;
-          }
-        } catch {}
-      }
+    const storedCustom = localStorage.getItem(`${email}_${plan}_customTargets`);
+    if (storedCustom) {
+      try {
+        const parsed = JSON.parse(storedCustom);
+        if (parsed && typeof parsed === "object") {
+          if (parsed.protein && (typeof parsed.protein !== "number" || parsed.protein < 30 || parsed.protein > 500)) delete parsed.protein;
+          if (parsed.calories && (typeof parsed.calories !== "number" || parsed.calories < 1000 || parsed.calories > 10000)) delete parsed.calories;
+          if (parsed.fats && (typeof parsed.fats !== "number" || parsed.fats < 20 || parsed.fats > 300)) delete parsed.fats;
+          if (parsed.water && (typeof parsed.water !== "number" || parsed.water < 1000 || parsed.water > 10000)) delete parsed.water;
+          if (parsed.sleep && (typeof parsed.sleep !== "number" || parsed.sleep < 4 || parsed.sleep > 16)) delete parsed.sleep;
+          customT = parsed;
+        }
+      } catch {}
     }
 
-    const savedCustomEx = email ? JSON.parse(localStorage.getItem(`${email}_customExercises`) || "{}") : {};
+    setUserEmail(email);
+    if (name) setUserName(name);
+    setActivePlan(plan);
+    setSavedPlans(plans);
+    setStartWeight(startW);
+    setGoalWeight(goalW);
+    setPlanDuration(duration);
+    setPlanStartDate(startDate);
+    setExerciseLogs(logs);
+    setLoggedMeals(meals);
+    setWeeklyWeights(weights);
+    setSleepLogs(sleep);
+    setSleepTarget(sleepTargetVal);
+    setLoggedWater(waterVal);
+    if (customT) setCustomTargets(customT);
+    setCustomExerciseDB(savedCustomEx);
+  };
 
-    Promise.resolve().then(() => {
-      setUserEmail(email);
-      if (name) setUserName(name);
-      if (email) {
-        setActivePlan(plan);
-        setSavedPlans(plans);
-        if (currentPlan) {
-          setStartWeight(startW);
-          setGoalWeight(goalW);
-          setPlanDuration(duration);
-          setPlanStartDate(startDate);
-          setExerciseLogs(logs);
-          setLoggedMeals(meals);
-          setWeeklyWeights(weights);
-          setSleepLogs(sleep);
-          setSleepTarget(sleepTargetVal);
-          setLoggedWater(waterVal);
-          if (customT) setCustomTargets(customT);
-        }
+  useEffect(() => {
+    loadPlanState();
+
+    const handlePlanRefresh = () => loadPlanState();
+    const handleStorageRefresh = (event: StorageEvent) => {
+      if (!event.key || event.key.includes("_plans") || event.key.includes("_activePlan") || event.key.includes("_weeklyWeights") || event.key.includes("_exerciseLogs") || event.key.includes("_waterIntake") || event.key.includes("_customTargets")) {
+        loadPlanState();
       }
-      setCustomExerciseDB(savedCustomEx);
-    });
+    };
+
+    window.addEventListener("gym-plan-updated", handlePlanRefresh);
+    window.addEventListener("storage", handleStorageRefresh);
+
+    return () => {
+      window.removeEventListener("gym-plan-updated", handlePlanRefresh);
+      window.removeEventListener("storage", handleStorageRefresh);
+    };
   }, []);
 
   useEffect(() => {
@@ -206,6 +331,12 @@ export default function Dashboard() {
       return;
     }
 
+    const isPlanFinished = weeklyWeights.length >= getRequiredWeeklyLogs();
+
+    if (isPlanFinished) {
+      return;
+    }
+
     // Limit weight difference to no more than 10kg
     const lastWeight = weeklyWeights.length > 0 ? weeklyWeights[weeklyWeights.length - 1].weight : startWeight;
     const weightChange = Math.abs(weightVal - lastWeight);
@@ -214,7 +345,7 @@ export default function Dashboard() {
       return;
     }
 
-    const newEntry = { date: new Date().toISOString(), weight: weightVal };
+    const newEntry = { date: getTestModeWeightDate(), weight: weightVal };
     const updatedWeights = normalizeWeeklyWeights([...weeklyWeights, newEntry]);
     persistWeeklyWeights(updatedWeights);
 
@@ -222,7 +353,6 @@ export default function Dashboard() {
     const startObj = planStartDate ? new Date(planStartDate) : new Date();
     const diffTime = Math.abs(new Date().getTime() - startObj.getTime());
     const daysSinceStart = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-    const totalDays = planDuration * 30 || 90;
     const expectedWeight = startWeight - ((startWeight - goalWeight) * (daysSinceStart / totalDays));
     const diff = weightVal - expectedWeight;
     const absDiff = Math.abs(diff);
@@ -336,7 +466,7 @@ export default function Dashboard() {
       });
     }
 
-    alert(`Weight Logged Successfully! Today: ${weightVal} kg`);
+    alert(`Weight Logged Successfully! ${TEST_MODE && weeklyWeights.length > 0 ? "Next 7-day target" : "Today"}: ${weightVal} kg`);
     setNewWeeklyWeight("");
   };
 
@@ -469,7 +599,7 @@ export default function Dashboard() {
   // --- Complex Target Calculations ---
   const goalWeightLbs = goalWeight * 2.20462;
   const sortedWeeklyWeights = normalizeWeeklyWeights(weeklyWeights);
-  const currentActualWeight = sortedWeeklyWeights.length > 0 ? sortedWeeklyWeights[sortedWeeklyWeights.length - 1].weight : startWeight;
+  const currentActualWeight = getCurrentTrackedWeight(sortedWeeklyWeights);
 
   const {
     targetCalories,
@@ -640,8 +770,8 @@ export default function Dashboard() {
     const diffTime = Math.abs(todayObj.getTime() - startObj.getTime());
     daysSinceStart = Math.floor(diffTime / (1000 * 60 * 60 * 24));
 
-    const lastWeighInDate = weeklyWeights.length > 0 ? new Date(weeklyWeights[weeklyWeights.length - 1].date) : startObj;
-    const intervalMs = TEST_MODE ? 5 * 1000 : 7 * 24 * 60 * 60 * 1000; // 5 seconds or 7 days (test mode uses 5s)
+    const lastWeighInDate = getLatestPastWeightEntryDate() ?? startObj;
+    const intervalMs = TEST_MODE ? 3 * 1000 : 7 * 24 * 60 * 60 * 1000; // 3 seconds or 7 days (test mode uses 3s)
     const diffSinceLastMs = Math.abs(todayObj.getTime() - lastWeighInDate.getTime());
 
     if (diffSinceLastMs >= intervalMs) {
@@ -704,15 +834,37 @@ export default function Dashboard() {
         : 'Great gains! Make sure protein intake is high (1g/lb) and progressive overload is driving the growth — not just calorie excess.';
     }
   }
-  const displayedWeeklyWeights = sortedWeeklyWeights.slice(-7);
-  const chartDates = displayedWeeklyWeights.map((entry) => new Date(entry.date).toLocaleDateString("en-US"));
-  const actualWeight = displayedWeeklyWeights.map((entry) => entry.weight);
-  const targetWeight = chartDates.length > 0 ? Array(chartDates.length).fill(goalWeight) : [goalWeight];
+  const weightProgress = getWeightProgressPercentage(currentActualWeight, startWeight, goalWeight);
+  const goalTrajectory = buildGoalTrajectory(planStartDate, planDuration, sortedWeeklyWeights);
+  const chartDates = goalTrajectory.dates.map((entry) => entry.toLocaleDateString("en-US"));
+  const actualWeight = goalTrajectory.actualData;
+  const targetWeight = goalTrajectory.targetData;
 
   const isWithinGoal = Math.abs(currentActualWeight - goalWeight) <= 2.5;
 
-  const requiredLogsCount = Math.ceil(totalDays / 7) + 1;
-  const planFinished = TEST_MODE ? weeklyWeights.length >= requiredLogsCount : daysSinceStart >= totalDays;
+  const planFinished = weeklyWeights.length >= getRequiredWeeklyLogs();
+  if (planFinished) {
+    showWeighInForm = false;
+  }
+  const weeklyAverageWeight = sortedWeeklyWeights.length > 0
+    ? sortedWeeklyWeights.reduce((sum, entry) => sum + entry.weight, 0) / sortedWeeklyWeights.length
+    : startWeight;
+  const weeklyWeightDiffs = sortedWeeklyWeights.slice(1).map((entry, index) => ({
+    date: entry.date,
+    change: entry.weight - sortedWeeklyWeights[index].weight,
+  }));
+  const averageWeeklyChange = weeklyWeightDiffs.length > 0
+    ? weeklyWeightDiffs.reduce((sum, item) => sum + item.change, 0) / weeklyWeightDiffs.length
+    : 0;
+  const positiveWeeklyChanges = weeklyWeightDiffs.filter((item) => item.change > 0);
+  const negativeWeeklyChanges = weeklyWeightDiffs.filter((item) => item.change < 0);
+  const largestIncrease = positiveWeeklyChanges.length > 0
+    ? positiveWeeklyChanges.reduce((best, item) => item.change > best.change ? item : best, positiveWeeklyChanges[0])
+    : null;
+  const largestDecrease = negativeWeeklyChanges.length > 0
+    ? negativeWeeklyChanges.reduce((best, item) => item.change < best.change ? item : best, negativeWeeklyChanges[0])
+    : null;
+  const weeklyProgressVisible = planFinished && sortedWeeklyWeights.length >= 2;
 
   // Set visual logs filtering — group by exercise
   const targetSetDateStr = setViewMode === "Today" ? todayStr : yesterdayStr;
@@ -735,6 +887,14 @@ export default function Dashboard() {
   const oneRMs = filteredLogs.map(l => l.oneRM);
   const current1RM = oneRMs.length > 0 ? oneRMs[oneRMs.length - 1] : null;
   const trackingType = getExerciseTrackingType(selectedExercise, selectedBodyPart);
+  const exerciseWeightValues = filteredLogs
+    .map((log) => typeof log.weight === "number" && Number.isFinite(log.weight) && log.weight > 0 ? log.weight : null)
+    .filter((value): value is number => value !== null);
+  const exerciseLightestWeight = exerciseWeightValues.length > 0 ? Math.min(...exerciseWeightValues) : null;
+  const exerciseHighestWeight = exerciseWeightValues.length > 0 ? Math.max(...exerciseWeightValues) : null;
+  const exerciseAverageLift = exerciseWeightValues.length > 0
+    ? exerciseWeightValues.reduce((sum, value) => sum + value, 0) / exerciseWeightValues.length
+    : null;
 
   return (
     <div className="space-y-8 bg-gray-50 min-h-screen p-6 pt-24 w-full">
@@ -788,27 +948,6 @@ export default function Dashboard() {
         </div>
       ) : (
         <div className="space-y-6 w-full">
-          {planFinished && (
-            <div className="bg-linear-to-r from-blue-600 via-purple-600 to-indigo-600 p-6 rounded-3xl text-white shadow-xl border border-blue-400 flex flex-col md:flex-row justify-between items-center gap-4 animate-pulse-slow">
-              <div className="flex items-center gap-4">
-                <div className="bg-white/20 p-3 rounded-2xl shrink-0">
-                  <Trophy className="text-yellow-300 animate-bounce" size={32} />
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold">Incredible Achievement! Plan Completed! 🏆</h3>
-                    <p className="text-sm text-blue-100 mt-1">
-                    You have logged all weeks and achieved a weight of {Math.round(currentActualWeight)}kg ({isWithinGoal ? "Within targeted range!" : "Dedicated run!"}).
-                  </p>
-                </div>
-              </div>
-              <Link href="/completed-plan">
-                <button className="bg-yellow-400 hover:bg-yellow-300 text-slate-900 font-bold px-6 py-3 rounded-2xl text-xs transition-all shadow-md flex items-center gap-2 cursor-pointer shrink-0">
-                  <Sparkles size={16} /> View Journey Report Card & AI Story
-                </button>
-              </Link>
-            </div>
-          )}
-
           {/* Deep Overall Progress Card (Daily Score) */}
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-50 w-full">
             <div className="flex flex-col sm:flex-row justify-between items-center gap-6">
@@ -1146,6 +1285,31 @@ export default function Dashboard() {
                     {current1RM ? formatExerciseValue(current1RM, trackingType) : "--"}
                   </span>
                 </div>
+
+                <div className="mt-4 rounded-2xl border border-gray-100 bg-white p-4 space-y-3">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-[0.2em] text-gray-500 font-bold">Exercise lift stats</p>
+                    <p className="text-sm text-gray-700 mt-1">{selectedBodyPart} • {selectedExercise}</p>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                    <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+                      <p className="text-gray-500">Lightest lift</p>
+                      <p className="font-bold text-gray-900 mt-1">{exerciseLightestWeight !== null ? `${exerciseLightestWeight.toFixed(1)} kg` : "--"}</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+                      <p className="text-gray-500">Highest lift</p>
+                      <p className="font-bold text-gray-900 mt-1">{exerciseHighestWeight !== null ? `${exerciseHighestWeight.toFixed(1)} kg` : "--"}</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+                      <p className="text-gray-500">Average lift</p>
+                      <p className="font-bold text-gray-900 mt-1">{exerciseAverageLift !== null ? `${exerciseAverageLift.toFixed(1)} kg` : "--"}</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+                      <p className="text-gray-500">Current 1RM</p>
+                      <p className="font-bold text-gray-900 mt-1">{current1RM ? `${current1RM.toFixed(1)} kg` : "--"}</p>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -1158,11 +1322,25 @@ export default function Dashboard() {
                     <span className="text-gray-500">Current</span>
                     <span className="font-medium text-gray-900">{Math.round(currentActualWeight)} kg</span>
                   </div>
+                  <p className="text-[11px] text-gray-500 mb-2">
+                    Starting weight / fitness date weight: <span className="font-semibold text-gray-700">{Math.round(startWeight)} kg</span>
+                  </p>
                   <div className="flex items-center justify-between text-sm mb-2">
                     <span className="text-gray-500">Goal</span>
                     <span className="font-medium text-blue-500">{Math.round(goalWeight)} kg</span>
                   </div>
-                  <ProgressBar label="" progress={workoutScore} colorClass="bg-blue-500" showText={false} />
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs text-gray-500">
+                      <span>Weekly weight progress</span>
+                      <span>{Math.round(weightProgress)}%</span>
+                    </div>
+                    <ProgressBar label="" progress={weightProgress} colorClass="bg-blue-500" showText={false} />
+                    <p className="text-[11px] text-gray-500">
+                      {sortedWeeklyWeights.length > 0
+                        ? `${sortedWeeklyWeights.length} weekly log${sortedWeeklyWeights.length === 1 ? "" : "s"} • Last update ${new Date(sortedWeeklyWeights[sortedWeeklyWeights.length - 1].date).toLocaleDateString()}`
+                        : "Log your weekly weight to start tracking your trajectory."}
+                    </p>
+                  </div>
                 </div>
 
                 <div className="mt-4 pt-4 border-t border-gray-50 space-y-3">
@@ -1183,7 +1361,7 @@ export default function Dashboard() {
                   ) : (
                     <div className="text-center bg-gray-50 rounded-lg p-3">
                       <span className="text-sm font-medium text-gray-600 block">Next weigh-in in</span>
-                      <span className="text-2xl font-bold text-blue-500 block mt-1">{nextWeighInDays} <span className="text-sm font-medium">days</span></span>
+                      <span className="text-2xl font-bold text-blue-500 block mt-1">{nextWeighInDays} <span className="text-sm font-medium">{TEST_MODE ? "seconds" : "days"}</span></span>
                     </div>
                   )}
 
@@ -1264,6 +1442,39 @@ export default function Dashboard() {
                     )}
                   </div>
                 </div>
+
+                {weeklyProgressVisible && (
+                  <div className="mt-6 bg-white p-6 rounded-3xl shadow-sm border border-gray-50">
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.2em] text-blue-600 font-bold">Weekly progress</p>
+                        <h3 className="text-lg font-semibold text-gray-900 mt-1">Weight trend for the current plan</h3>
+                        <p className="text-sm text-gray-500 mt-1">Plan complete. Weekly weight logs are locked until the plan duration is extended.</p>
+                      </div>
+                      <div className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-600">
+                        <TrendingUp size={16} />
+                        {averageWeeklyChange >= 0 ? `+${averageWeeklyChange.toFixed(1)} kg` : `${averageWeeklyChange.toFixed(1)} kg`} avg/week
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-5">
+                      <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
+                        <p className="text-xs uppercase tracking-[0.2em] text-gray-500">Average weekly weight</p>
+                        <p className="text-2xl font-bold text-gray-900 mt-2">{Math.round(weeklyAverageWeight)} kg</p>
+                      </div>
+                      <div className="bg-emerald-50 rounded-2xl p-4 border border-emerald-100">
+                        <p className="text-xs uppercase tracking-[0.2em] text-emerald-700">Largest increase</p>
+                        <p className="text-2xl font-bold text-emerald-900 mt-2">{largestIncrease ? `+${largestIncrease.change.toFixed(1)} kg` : "--"}</p>
+                        <p className="text-sm text-emerald-800 mt-2">{largestIncrease ? new Date(largestIncrease.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : "No increase yet"}</p>
+                      </div>
+                      <div className="bg-rose-50 rounded-2xl p-4 border border-rose-100">
+                        <p className="text-xs uppercase tracking-[0.2em] text-rose-700">Largest drop</p>
+                        <p className="text-2xl font-bold text-rose-900 mt-2">{largestDecrease ? `${largestDecrease.change.toFixed(1)} kg` : "--"}</p>
+                        <p className="text-sm text-rose-800 mt-2">{largestDecrease ? new Date(largestDecrease.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : "No drop yet"}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {loadingRecommendation && (
                   <div className="mt-4 pt-4 border-t border-gray-100 space-y-4 animate-pulse">
@@ -1484,7 +1695,7 @@ export default function Dashboard() {
             <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-50">
               <h3 className="text-lg font-semibold text-blue-500 mb-4">Goal Trajectory (Weight)</h3>
               <div className="h-64">
-                <GoalChart dates={chartDates} actualData={actualWeight as number[]} targetData={targetWeight} label="Weight" />
+                <GoalChart dates={chartDates} actualData={actualWeight} targetData={targetWeight} label="Weight" />
               </div>
             </div>
 

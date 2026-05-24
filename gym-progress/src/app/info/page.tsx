@@ -1,7 +1,24 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Scale, Ruler, Activity, Save, User, Clock, Flame, Zap, Droplet, Heart, ChevronDown, ChevronUp, BookOpen } from "lucide-react";
+import Link from "next/link";
+import { Scale, Ruler, Activity, Save, Flame, Zap, Droplet, Heart, ChevronDown, ChevronUp, BookOpen, ArrowRight, AlertTriangle, CalendarClock } from "lucide-react";
+
+type MeasurementUnit = "cm" | "in";
+
+const defaultBodyMetrics = {
+  bicepsLeft: "",
+  bicepsRight: "",
+  waist: "",
+  thighLeft: "",
+  thighRight: "",
+  shoulderWidth: "",
+  forearmLeft: "",
+  forearmRight: "",
+  chest: "",
+  calfLeft: "",
+  calfRight: "",
+};
 
 export default function YourMetrics() {
   const [weight, setWeight] = useState("");
@@ -13,6 +30,9 @@ export default function YourMetrics() {
   const [bmiStatus, setBmiStatus] = useState("Unknown");
   const [userEmail, setUserEmail] = useState("");
   const [showScience, setShowScience] = useState(false);
+  const [measurementUnit, setMeasurementUnit] = useState<MeasurementUnit>("cm");
+  const [bodyMetrics, setBodyMetrics] = useState(defaultBodyMetrics);
+  const [lastMetricsUpdate, setLastMetricsUpdate] = useState<string | null>(null);
 
   // Dynamic calculations on render
   const weightNum = parseFloat(weight) || 0;
@@ -70,18 +90,59 @@ export default function YourMetrics() {
     }
   }
 
+  const convertToUnit = (value: number, from: MeasurementUnit, to: MeasurementUnit) => {
+    if (from === to) return value;
+    return from === "cm" ? value / 2.54 : value * 2.54;
+  };
+
+  const convertBodyMetricsToUnit = (values: typeof defaultBodyMetrics, from: MeasurementUnit, to: MeasurementUnit) => {
+    const converted = { ...values };
+    Object.keys(converted).forEach((key) => {
+      const typedKey = key as keyof typeof defaultBodyMetrics;
+      const raw = converted[typedKey];
+      if (!raw) return;
+      const parsed = Number(raw);
+      if (!Number.isFinite(parsed)) return;
+      converted[typedKey] = convertToUnit(parsed, from, to).toFixed(1);
+    });
+    return converted;
+  };
+
+  const daysSinceLastUpdate = lastMetricsUpdate
+    ? Math.floor((Date.now() - new Date(lastMetricsUpdate).getTime()) / (1000 * 60 * 60 * 24))
+    : Number.POSITIVE_INFINITY;
+
+  const metricsReminder = !lastMetricsUpdate
+    ? "Monthly metrics are due now. Update your body measurements to keep your progress visible."
+    : daysSinceLastUpdate >= 30
+      ? "Your monthly body metrics are overdue. Please update them today."
+      : daysSinceLastUpdate >= 25
+        ? "Your monthly body metrics are due soon."
+        : "Monthly body metrics are up to date.";
+
   useEffect(() => {
     const email = localStorage.getItem("userEmail") || "";
     setUserEmail(email);
 
     if (email) {
       const metrics = JSON.parse(localStorage.getItem(`${email}_metrics`) || "{}");
+      const savedUnit = metrics.measurementUnit === "in" ? "in" : "cm";
+      setMeasurementUnit(savedUnit);
       setWeight(metrics.weight || localStorage.getItem("userWeight") || "");
       setHeight(metrics.height || localStorage.getItem("userHeight") || "");
       setAge(metrics.age || "");
       setGender(metrics.gender || "Male");
       setActivityLevel(metrics.activityLevel || "Moderate");
-      
+      setLastMetricsUpdate(metrics.lastUpdated || null);
+
+      const storedBodyMetricsCm = metrics.bodyMetricsCm || {};
+      const convertedBodyMetrics = convertBodyMetricsToUnit(
+        { ...defaultBodyMetrics, ...Object.fromEntries(Object.entries(storedBodyMetricsCm).map(([key, value]) => [key, String(value)])) },
+        "cm",
+        savedUnit
+      );
+      setBodyMetrics(convertedBodyMetrics);
+
       if (metrics.weight && metrics.height) {
         calculateBmi(metrics.weight, metrics.height);
       } else if (localStorage.getItem("userWeight") && localStorage.getItem("userHeight")) {
@@ -104,32 +165,86 @@ export default function YourMetrics() {
     }
   };
 
+  const handleUnitChange = (nextUnit: MeasurementUnit) => {
+    setBodyMetrics((current) => convertBodyMetricsToUnit(current, measurementUnit, nextUnit));
+    setMeasurementUnit(nextUnit);
+  };
+
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     if (!userEmail) return;
+
+    const bodyMetricsCm = Object.fromEntries(
+      Object.entries(bodyMetrics).map(([key, value]) => {
+        const typedKey = key as keyof typeof defaultBodyMetrics;
+        if (!value) return [key, ""];
+        const parsed = Number(value);
+        return [key, convertToUnit(parsed, measurementUnit, "cm").toFixed(1)];
+      })
+    );
 
     const metrics = {
       weight,
       height,
       age,
       gender,
-      activityLevel
+      activityLevel,
+      measurementUnit,
+      bodyMetricsCm,
+      lastUpdated: new Date().toISOString(),
     };
 
     localStorage.setItem(`${userEmail}_metrics`, JSON.stringify(metrics));
     // Also save to global keys for backward compatibility/simplicity in plan page
     localStorage.setItem("userWeight", weight);
     localStorage.setItem("userHeight", height);
-    
+    setLastMetricsUpdate(metrics.lastUpdated);
+
     calculateBmi(weight, height);
     alert("Metrics saved successfully!");
   };
 
+  const bodyMetricGroups = [
+    {
+      title: "Upper Body",
+      fields: [
+        { key: "bicepsLeft", label: "Biceps (Left)" },
+        { key: "bicepsRight", label: "Biceps (Right)" },
+        { key: "forearmLeft", label: "Forearms (Left)" },
+        { key: "forearmRight", label: "Forearms (Right)" },
+        { key: "chest", label: "Chest" },
+        { key: "shoulderWidth", label: "Shoulder Width" },
+      ],
+    },
+    {
+      title: "Core & Waist",
+      fields: [{ key: "waist", label: "Waist" }],
+    },
+    {
+      title: "Lower Body",
+      fields: [
+        { key: "thighLeft", label: "Thighs / Legs (Left)" },
+        { key: "thighRight", label: "Thighs / Legs (Right)" },
+        { key: "calfLeft", label: "Calves (Left)" },
+        { key: "calfRight", label: "Calves (Right)" },
+      ],
+    },
+  ];
+
   return (
     <div className="space-y-6 p-6 bg-gray-50 min-h-screen">
-      <header className="max-w-4xl mx-auto">
-        <h1 className="text-3xl font-bold text-blue-500">Your Metrics</h1>
-        <p className="text-gray-500 mt-1">Manage your body measurements and personal details.</p>
+      <header className="max-w-4xl mx-auto flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-blue-500">Your Metrics</h1>
+          <p className="text-gray-500 mt-1">Track monthly body measurements, keep your reminders on schedule, and explore how your training is affecting progress.</p>
+        </div>
+        <Link
+          href="/visualise"
+          className="inline-flex items-center gap-2 bg-white border border-gray-200 text-gray-900 px-4 py-2 rounded-xl shadow-sm hover:border-blue-500 transition-colors"
+        >
+          View Progress Graphs
+          <ArrowRight size={16} />
+        </Link>
       </header>
 
       <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -303,9 +418,41 @@ export default function YourMetrics() {
         </div>
       </div>
 
+      <div className="max-w-4xl mx-auto rounded-2xl border border-amber-100 bg-amber-50 p-4 shadow-sm flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="flex items-start gap-3">
+          <div className="bg-amber-100 text-amber-700 p-2 rounded-lg">
+            <AlertTriangle size={18} />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-amber-900">Monthly measurements reminder</p>
+            <p className="text-sm text-amber-800 mt-1">{metricsReminder}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 text-sm text-amber-900">
+          <CalendarClock size={16} />
+          {lastMetricsUpdate ? `Last updated ${new Date(lastMetricsUpdate).toLocaleDateString()}` : "No update saved yet"}
+        </div>
+      </div>
+
       {/* Input Form */}
       <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm max-w-4xl mx-auto">
-        <h2 className="text-xl font-semibold text-gray-900 mb-4">Update Metrics</h2>
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-6">
+          <div>
+            <h2 className="text-xl font-semibold text-gray-900">Update Metrics</h2>
+            <p className="text-sm text-gray-500 mt-1">Save your latest measurements and set your preferred unit for this check-in.</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <label className="text-sm font-medium text-gray-700">Unit</label>
+            <select
+              value={measurementUnit}
+              onChange={(e) => handleUnitChange(e.target.value as MeasurementUnit)}
+              className="bg-gray-50 border border-gray-200 rounded-lg py-2 px-3 text-gray-900 focus:outline-none focus:border-blue-500"
+            >
+              <option value="cm">Centimeters</option>
+              <option value="in">Inches</option>
+            </select>
+          </div>
+        </div>
         <form onSubmit={handleSave} className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Weight (kg)</label>
@@ -364,7 +511,38 @@ export default function YourMetrics() {
               <option value="Very Active">Very Active (Athlete)</option>
             </select>
           </div>
-          
+
+          <div className="md:col-span-2">
+            <div className="border-t border-gray-100 pt-4 mt-2">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Body Measurements</h3>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {bodyMetricGroups.map((group) => (
+                  <div key={group.title} className="space-y-3">
+                    <p className="text-sm font-semibold text-gray-700">{group.title}</p>
+                    {group.fields.map((field) => (
+                      <div key={field.key}>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">{field.label} ({measurementUnit})</label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={bodyMetrics[field.key as keyof typeof defaultBodyMetrics]}
+                          onChange={(e) =>
+                            setBodyMetrics((current) => ({
+                              ...current,
+                              [field.key]: e.target.value,
+                            }))
+                          }
+                          placeholder={measurementUnit === "cm" ? "e.g. 32.5" : "e.g. 12.8"}
+                          className="w-full bg-gray-50 border border-gray-200 rounded-lg py-2.5 px-4 text-gray-900 focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
           <div className="md:col-span-2 flex justify-end">
             <button 
               type="submit"
