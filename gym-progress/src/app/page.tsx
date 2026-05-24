@@ -110,6 +110,7 @@ export default function Dashboard() {
   const [updateStatus, setUpdateStatus] = useState("");
   const [timeTick, setTimeTick] = useState(0);
   const [lastActionTime, setLastActionTime] = useState<number>(0);
+  const [showCompletionModal, setShowCompletionModal] = useState(false);
 
   useEffect(() => {
     if (!TEST_MODE) return;
@@ -868,6 +869,18 @@ export default function Dashboard() {
   if (planFinished) {
     showWeighInForm = false;
   }
+
+  useEffect(() => {
+    if (activePlan && planFinished) {
+      const email = localStorage.getItem("userEmail") || "";
+      const dismissed = localStorage.getItem(`${email}_${activePlan}_completed_dismissed`) === "true";
+      if (!dismissed) {
+        setShowCompletionModal(true);
+      }
+    } else {
+      setShowCompletionModal(false);
+    }
+  }, [activePlan, planFinished, weeklyWeights]);
   const weeklyAverageWeight = sortedWeeklyWeights.length > 0
     ? sortedWeeklyWeights.reduce((sum, entry) => sum + entry.weight, 0) / sortedWeeklyWeights.length
     : startWeight;
@@ -970,6 +983,35 @@ export default function Dashboard() {
         </div>
       ) : (
         <div className="space-y-6 w-full">
+          {planFinished && (
+            <div className="bg-gradient-to-r from-yellow-500/10 via-amber-500/10 to-yellow-500/5 border border-yellow-200 p-6 rounded-3xl flex flex-col sm:flex-row justify-between items-center gap-4 w-full shadow-xs animate-fadeIn">
+              <div className="flex items-center gap-4 text-center sm:text-left">
+                <div className="bg-yellow-500/10 p-3 rounded-2xl text-yellow-600 border border-yellow-500/20 shrink-0">
+                  <Trophy size={28} className="animate-bounce" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-gray-900 text-base flex items-center gap-1.5 justify-center sm:justify-start">
+                    Plan Completed! 🎉
+                  </h3>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Outstanding job! You completed all weigh-in milestones for your active plan <strong>"{activePlan}"</strong>.
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-2.5 w-full sm:w-auto shrink-0 justify-center sm:justify-end">
+                <Link href="/completed-plan">
+                  <button className="bg-yellow-500 hover:bg-yellow-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-xs cursor-pointer flex items-center gap-1.5">
+                    <Trophy size={14} /> View Report Card
+                  </button>
+                </Link>
+                <Link href="/plans">
+                  <button className="bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 text-xs font-semibold px-4 py-2.5 rounded-xl transition-all cursor-pointer">
+                    Extend Plan
+                  </button>
+                </Link>
+              </div>
+            </div>
+          )}
           {/* Deep Overall Progress Card (Daily Score) */}
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-50 w-full">
             <div className="flex flex-col sm:flex-row justify-between items-center gap-6">
@@ -1424,11 +1466,15 @@ export default function Dashboard() {
                                 }}
                                 className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:border-blue-500"
                               >
-                                {sortedWeeklyWeights.map((entry) => (
-                                  <option key={entry.date} value={getWeightDateKey(entry.date)}>
-                                    {new Date(entry.date).toLocaleDateString()} - {entry.weight} kg
-                                  </option>
-                                ))}
+                                {(() => {
+                                  const uniqueWeights = sortedWeeklyWeights.filter((w, i, arr) =>
+                                    arr.findIndex(e => getWeightDateKey(e.date) === getWeightDateKey(w.date)) === i);
+                                  return uniqueWeights.map((entry, idx) => (
+                                    <option key={idx} value={getWeightDateKey(entry.date)}>
+                                      {new Date(entry.date).toLocaleDateString()} - {entry.weight} kg
+                                    </option>
+                                  ));
+                                })()}
                               </select>
                             </div>
 
@@ -1741,6 +1787,70 @@ export default function Dashboard() {
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Celebration Completion Modal */}
+      {showCompletionModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fadeIn">
+          <div className="bg-white rounded-3xl max-w-md w-full p-8 text-center space-y-6 shadow-2xl border border-gray-100 transform scale-100 transition-transform">
+            <div className="flex justify-center">
+              <div className="bg-yellow-500/10 p-5 rounded-full border border-yellow-500/20 relative">
+                <Trophy className="text-yellow-500" size={56} />
+                <Sparkles className="text-yellow-400 absolute top-2 right-2 animate-bounce" size={20} />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <h2 className="text-2xl font-black text-gray-900 tracking-tight">Plan Completed! 🏆</h2>
+              <p className="text-gray-500 text-sm leading-relaxed">
+                Outstanding dedication! You have successfully completed all required weekly logs for your active plan <strong className="text-blue-600 font-bold">"{activePlan}"</strong>.
+              </p>
+            </div>
+            
+            <div className="bg-blue-50/50 border border-blue-100 rounded-2xl p-4 text-left">
+              <p className="text-xs text-blue-700 font-medium leading-relaxed">
+                🎓 <strong>Legacy Report Card</strong>: We have compiled a deep performance breakdown of your sets, diet, sleep, and recovery metrics with AI legacy analysis.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-2.5 pt-2">
+              <Link href="/completed-plan" className="w-full">
+                <button 
+                  onClick={() => {
+                    const email = localStorage.getItem("userEmail") || "";
+                    localStorage.setItem(`${email}_${activePlan}_completed_dismissed`, "true");
+                    setShowCompletionModal(false);
+                  }}
+                  className="w-full bg-blue-500 hover:bg-blue-600 text-white py-3 rounded-2xl text-sm font-bold transition-all shadow-md shadow-blue-500/15 cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <Trophy size={16} /> View Legacy Report Card
+                </button>
+              </Link>
+              <Link href="/plans" className="w-full">
+                <button 
+                  onClick={() => {
+                    const email = localStorage.getItem("userEmail") || "";
+                    localStorage.setItem(`${email}_${activePlan}_completed_dismissed`, "true");
+                    setShowCompletionModal(false);
+                  }}
+                  className="w-full bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-700 py-3 rounded-2xl text-sm font-semibold transition-all cursor-pointer"
+                >
+                  Extend / Customize Plan
+                </button>
+              </Link>
+              <button 
+                type="button"
+                onClick={() => {
+                  const email = localStorage.getItem("userEmail") || "";
+                  localStorage.setItem(`${email}_${activePlan}_completed_dismissed`, "true");
+                  setShowCompletionModal(false);
+                }}
+                className="text-xs font-semibold text-gray-400 hover:text-gray-600 transition-colors pt-2 cursor-pointer"
+              >
+                Close & Return to Dashboard
+              </button>
             </div>
           </div>
         </div>

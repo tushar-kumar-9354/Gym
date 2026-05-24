@@ -108,17 +108,36 @@ export default function YourMetrics() {
     return converted;
   };
 
-  const daysSinceLastUpdate = lastMetricsUpdate
-    ? Math.floor((Date.now() - new Date(lastMetricsUpdate).getTime()) / (1000 * 60 * 60 * 24))
-    : Number.POSITIVE_INFINITY;
+  const [tick, setTick] = useState(0);
+  const [pageMountTime] = useState(() => Date.now());
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [hasOpenedModal, setHasOpenedModal] = useState(false);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setTick((t) => t + 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const secondsSinceLastUpdate = lastMetricsUpdate
+    ? Math.floor((Date.now() - new Date(lastMetricsUpdate).getTime()) / 1000)
+    : Math.floor((Date.now() - pageMountTime) / 1000);
 
   const metricsReminder = !lastMetricsUpdate
-    ? "Monthly metrics are due now. Update your body measurements to keep your progress visible."
-    : daysSinceLastUpdate >= 30
+    ? `Monthly metrics are due now. Initializing test timer... (${secondsSinceLastUpdate}s elapsed)`
+    : secondsSinceLastUpdate >= 3
       ? "Your monthly body metrics are overdue. Please update them today."
-      : daysSinceLastUpdate >= 25
+      : secondsSinceLastUpdate >= 2
         ? "Your monthly body metrics are due soon."
         : "Monthly body metrics are up to date.";
+
+  useEffect(() => {
+    if (secondsSinceLastUpdate >= 3 && !hasOpenedModal) {
+      setIsModalOpen(true);
+      setHasOpenedModal(true);
+    }
+  }, [secondsSinceLastUpdate, hasOpenedModal]);
 
   useEffect(() => {
     const email = localStorage.getItem("userEmail") || "";
@@ -200,9 +219,67 @@ export default function YourMetrics() {
     localStorage.setItem("userHeight", height);
     setLastMetricsUpdate(metrics.lastUpdated);
 
+    // --- Save historical snapshot for month-over-month tracking ---
+    const historyKey = `${userEmail}_metricsHistory`;
+    const history: any[] = JSON.parse(localStorage.getItem(historyKey) || "[]");
+    const snapshot = {
+      date: metrics.lastUpdated,
+      weight: parseFloat(weight) || 0,
+      bodyMetricsCm: { ...bodyMetricsCm },
+    };
+    history.push(snapshot);
+    localStorage.setItem(historyKey, JSON.stringify(history));
+    // --- End history snapshot ---
+
     calculateBmi(weight, height);
     alert("Metrics saved successfully!");
   };
+
+  const handleModalSave = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userEmail) return;
+
+    const bodyMetricsCm = Object.fromEntries(
+      Object.entries(bodyMetrics).map(([key, value]) => {
+        const typedKey = key as keyof typeof defaultBodyMetrics;
+        if (!value) return [key, ""];
+        const parsed = Number(value);
+        return [key, convertToUnit(parsed, measurementUnit, "cm").toFixed(1)];
+      })
+    );
+
+    const metrics = {
+      weight,
+      height,
+      age,
+      gender,
+      activityLevel,
+      measurementUnit,
+      bodyMetricsCm,
+      lastUpdated: new Date().toISOString(),
+    };
+
+    localStorage.setItem(`${userEmail}_metrics`, JSON.stringify(metrics));
+    localStorage.setItem("userWeight", weight);
+    localStorage.setItem("userHeight", height);
+    setLastMetricsUpdate(metrics.lastUpdated);
+
+    const historyKey = `${userEmail}_metricsHistory`;
+    const history: any[] = JSON.parse(localStorage.getItem(historyKey) || "[]");
+    const snapshot = {
+      date: metrics.lastUpdated,
+      weight: parseFloat(weight) || 0,
+      bodyMetricsCm: { ...bodyMetricsCm },
+    };
+    history.push(snapshot);
+    localStorage.setItem(historyKey, JSON.stringify(history));
+
+    calculateBmi(weight, height);
+    setIsModalOpen(false);
+    setHasOpenedModal(false);
+    alert("Metrics saved successfully! The progress graphs have been updated.");
+  };
+
 
   const bodyMetricGroups = [
     {
@@ -430,7 +507,7 @@ export default function YourMetrics() {
         </div>
         <div className="flex items-center gap-2 text-sm text-amber-900">
           <CalendarClock size={16} />
-          {lastMetricsUpdate ? `Last updated ${new Date(lastMetricsUpdate).toLocaleDateString()}` : "No update saved yet"}
+          {lastMetricsUpdate ? `Last updated ${new Date(lastMetricsUpdate).toLocaleTimeString()} (${secondsSinceLastUpdate}s ago)` : "No update saved yet"}
         </div>
       </div>
 
@@ -553,6 +630,134 @@ export default function YourMetrics() {
           </div>
         </form>
       </div>
+
+      {/* Pop-up Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl shadow-2xl border border-gray-100 max-w-2xl w-full max-h-[90vh] overflow-y-auto transform transition-all scale-100 animate-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="sticky top-0 bg-white/95 backdrop-blur-md px-6 py-4 border-b border-gray-100 flex items-center justify-between z-10">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                  <Ruler className="text-blue-500 animate-bounce" size={22} />
+                  Time to Update Metrics!
+                </h2>
+                <p className="text-xs text-gray-500 mt-0.5">3 seconds elapsed. Enter your new metrics below to update your graphs.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsModalOpen(false);
+                  setHasOpenedModal(false);
+                }}
+                className="text-gray-400 hover:text-gray-600 p-1.5 rounded-full hover:bg-gray-100 transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Content / Form */}
+            <form onSubmit={handleModalSave} className="p-6 space-y-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">Weight (kg)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    required
+                    value={weight}
+                    onChange={(e) => setWeight(e.target.value)}
+                    placeholder="e.g. 75"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl py-2 px-3 text-sm focus:outline-none focus:border-blue-500 text-gray-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">Height (cm)</label>
+                  <input
+                    type="number"
+                    required
+                    value={height}
+                    onChange={(e) => setHeight(e.target.value)}
+                    placeholder="e.g. 175"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl py-2 px-3 text-sm focus:outline-none focus:border-blue-500 text-gray-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">Measurement Unit</label>
+                  <select
+                    value={measurementUnit}
+                    onChange={(e) => handleUnitChange(e.target.value as MeasurementUnit)}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl py-2 px-3 text-sm focus:outline-none focus:border-blue-500 text-gray-900"
+                  >
+                    <option value="cm">Centimeters (cm)</option>
+                    <option value="in">Inches (in)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">Age</label>
+                  <input
+                    type="number"
+                    required
+                    value={age}
+                    onChange={(e) => setAge(e.target.value)}
+                    placeholder="e.g. 25"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl py-2 px-3 text-sm focus:outline-none focus:border-blue-500 text-gray-900"
+                  />
+                </div>
+              </div>
+
+              <div className="border-t border-gray-100 pt-4">
+                <h3 className="text-sm font-bold text-gray-900 mb-3 uppercase tracking-wider">Body Measurements ({measurementUnit})</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {Object.keys(bodyMetrics).map((key) => {
+                    const label = key
+                      .replace(/([A-Z])/g, " $1")
+                      .replace(/^./, (str) => str.toUpperCase());
+                    return (
+                      <div key={key}>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">{label}</label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={bodyMetrics[key as keyof typeof defaultBodyMetrics]}
+                          onChange={(e) =>
+                            setBodyMetrics((current) => ({
+                              ...current,
+                              [key]: e.target.value,
+                            }))
+                          }
+                          placeholder={measurementUnit === "cm" ? "e.g. 30.5" : "e.g. 12.0"}
+                          className="w-full bg-gray-50 border border-gray-200 rounded-xl py-2 px-3 text-sm focus:outline-none focus:border-blue-500 text-gray-900"
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="border-t border-gray-100 pt-4 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsModalOpen(false);
+                    setHasOpenedModal(false);
+                  }}
+                  className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-5 py-2 rounded-xl text-sm font-medium transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="bg-blue-500 hover:bg-blue-600 text-white px-5 py-2 rounded-xl text-sm font-medium transition-colors flex items-center gap-1.5 shadow-md shadow-blue-500/10"
+                >
+                  <Save size={16} /> Save & Update Graphs
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { Download, FileText, FileSpreadsheet, Calendar, BarChart2, CheckCircle2, FileJson, Trophy, Zap, Droplet } from "lucide-react";
+import { Download, FileText, FileSpreadsheet, Calendar, BarChart2, CheckCircle2, FileJson, Trophy, Zap, Droplet, Ruler } from "lucide-react";
 import { computePlanTargets } from "@/lib/planTargets";
 
 export default function ReportsExport() {
@@ -14,6 +14,8 @@ export default function ReportsExport() {
   const [weeklyAnalysis, setWeeklyAnalysis] = useState<any>(null);
   const [loadingWeekly, setLoadingWeekly] = useState(false);
   const [errorWeekly, setErrorWeekly] = useState<string | null>(null);
+  const [metricsHistory, setMetricsHistory] = useState<any[]>([]);
+  const [currentMetrics, setCurrentMetrics] = useState<any>(null);
 
   useEffect(() => {
     const email = localStorage.getItem("userEmail") || "";
@@ -31,6 +33,14 @@ export default function ReportsExport() {
 
       const meals = JSON.parse(localStorage.getItem(`${email}_${plan}_loggedMeals`) || "[]");
       setLoggedMeals(meals);
+    }
+
+    // Load body metrics (plan-independent)
+    if (email) {
+      const mHistory = JSON.parse(localStorage.getItem(`${email}_metricsHistory`) || "[]");
+      setMetricsHistory(mHistory);
+      const mCurrent = JSON.parse(localStorage.getItem(`${email}_metrics`) || "null");
+      setCurrentMetrics(mCurrent);
     }
   }, []);
 
@@ -107,6 +117,16 @@ export default function ReportsExport() {
       body.dailyReports = dailyReports;
       body.userProfile = userProfile;
       body.frequentFoods = frequentFoods;
+
+      // Include body metrics for AI analysis
+      if (currentMetrics && currentMetrics.bodyMetricsCm) {
+        body.bodyMetrics = currentMetrics.bodyMetricsCm;
+        body.bodyMetricsLastUpdated = currentMetrics.lastUpdated;
+      }
+      if (metricsHistory.length > 0) {
+        // Send last 3 snapshots for trend awareness
+        body.bodyMetricsHistory = metricsHistory.slice(-3);
+      }
       const res = await fetch("/api/gemini/analyze-weekly-secondary", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -154,6 +174,41 @@ export default function ReportsExport() {
       });
     } else {
       report += `- No exercise logs found.\n`;
+    }
+    report += `\n`;
+
+    // Body Measurements Section
+    report += `==================================================\n`;
+    report += `BODY MEASUREMENTS\n`;
+    report += `==================================================\n`;
+    if (currentMetrics && currentMetrics.bodyMetricsCm) {
+      const metricLabels: Record<string, string> = {
+        chest: "Chest", waist: "Waist", bicepsLeft: "Biceps (L)", bicepsRight: "Biceps (R)",
+        forearmLeft: "Forearm (L)", forearmRight: "Forearm (R)", shoulderWidth: "Shoulders",
+        thighLeft: "Thigh (L)", thighRight: "Thigh (R)", calfLeft: "Calf (L)", calfRight: "Calf (R)",
+      };
+      Object.entries(currentMetrics.bodyMetricsCm).forEach(([key, val]) => {
+        const label = metricLabels[key] || key;
+        if (val && parseFloat(val as string) > 0) {
+          report += `- ${label}: ${val} cm`;
+          // Show change from first record if history available
+          if (metricsHistory.length >= 2) {
+            const firstSnap = metricsHistory[0];
+            const firstVal = parseFloat(firstSnap?.bodyMetricsCm?.[key] || "0");
+            const currVal = parseFloat(val as string);
+            if (firstVal > 0) {
+              const change = currVal - firstVal;
+              report += ` (${change >= 0 ? "+" : ""}${change.toFixed(1)} cm since start)`;
+            }
+          }
+          report += `\n`;
+        }
+      });
+      if (currentMetrics.lastUpdated) {
+        report += `Last Updated: ${new Date(currentMetrics.lastUpdated).toLocaleDateString()}\n`;
+      }
+    } else {
+      report += `- No body measurements recorded.\n`;
     }
     report += `\n`;
 
@@ -385,6 +440,60 @@ export default function ReportsExport() {
                   </span>
                 </div>
               </div>
+            )}
+          </section>
+
+          {/* Body Measurements Card */}
+          <section className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+            <h2 className="text-xl font-semibold mb-4 flex items-center gap-2 text-indigo-500">
+              <Ruler size={20} /> Body Measurements
+            </h2>
+            {currentMetrics && currentMetrics.bodyMetricsCm ? (() => {
+              const metricLabels: Record<string, string> = {
+                chest: "Chest", waist: "Waist", bicepsLeft: "Biceps (L)", bicepsRight: "Biceps (R)",
+                forearmLeft: "Forearm (L)", forearmRight: "Forearm (R)", shoulderWidth: "Shoulders",
+                thighLeft: "Thigh (L)", thighRight: "Thigh (R)", calfLeft: "Calf (L)", calfRight: "Calf (R)",
+              };
+              const entries = Object.entries(currentMetrics.bodyMetricsCm)
+                .filter(([, v]) => v && parseFloat(v as string) > 0);
+              if (entries.length === 0) {
+                return <p className="text-sm text-gray-500 text-center">No measurements recorded yet.</p>;
+              }
+              return (
+                <div className="space-y-2 max-h-52 overflow-y-auto">
+                  {entries.map(([key, val]) => {
+                    const label = metricLabels[key] || key;
+                    let changeEl = null;
+                    if (metricsHistory.length >= 2) {
+                      const firstSnap = metricsHistory[0];
+                      const firstVal = parseFloat(firstSnap?.bodyMetricsCm?.[key] || "0");
+                      const currVal = parseFloat(val as string);
+                      if (firstVal > 0) {
+                        const diff = currVal - firstVal;
+                        changeEl = (
+                          <span className={`text-xs font-medium ${diff >= 0 ? "text-green-600" : "text-red-600"}`}>
+                            {diff >= 0 ? "+" : ""}{diff.toFixed(1)}
+                          </span>
+                        );
+                      }
+                    }
+                    return (
+                      <div key={key} className="flex justify-between items-center text-sm bg-indigo-50/50 p-2.5 rounded-lg border border-indigo-100/50">
+                        <span className="text-gray-700 font-medium">{label}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-gray-900">{val} cm</span>
+                          {changeEl}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {currentMetrics.lastUpdated && (
+                    <p className="text-xs text-gray-400 text-right mt-2">Updated: {new Date(currentMetrics.lastUpdated).toLocaleDateString()}</p>
+                  )}
+                </div>
+              );
+            })() : (
+              <p className="text-sm text-gray-500 text-center">No measurements recorded yet.</p>
             )}
           </section>
         </div>

@@ -26,18 +26,23 @@ const weeklyRequestSchema = z.object({
   userProfile: z.record(z.string(), z.any()).optional(),
   // @ts-ignore
   frequentFoods: z.array(z.any()).optional(),
+  bodyMetrics: z.record(z.string(), z.any()).optional(),
+  bodyMetricsLastUpdated: z.string().optional(),
+  // @ts-ignore
+  bodyMetricsHistory: z.array(z.any()).optional(),
 });
 // ------------------------------------
 
 const SYSTEM_PROMPT = `You are an elite AI personal trainer and sports scientist.
-Given the user's weight targets, active plan parameters, their daily logged reports for the past week, and their current daily routine, perform a comprehensive weekly performance review.
+Given the user's weight targets, active plan parameters, their daily logged reports for the past week, their body measurements history, and their current daily routine, perform a comprehensive weekly performance review.
 
 STRICT RULES:
 1. Respond ONLY with a valid raw JSON object — no markdown, no backticks, no comments.
 2. JSON must match this exact schema:
 {
-  "weeklyReport": "string (A beautiful, highly personalized, constructive 3-4 sentence paragraph summarizing their weekly calorie, protein, hydration, and gym compliance, explaining what they did well, and exactly how to fix their gaps next week)",
+  "weeklyReport": "string (A beautiful, highly personalized, constructive 3-4 sentence paragraph summarizing their weekly calorie, protein, hydration, gym compliance, AND body measurement trends — explaining what they did well, and exactly how to fix their gaps next week)",
   "routineRecommendation": "string (Actionable 1-2 sentence recommendation for adjusting their daily timetable to optimize recovery, nutrition timing, and goal trajectory)",
+  "bodyMetricsInsight": "string (1-2 sentences analyzing their body measurement changes — e.g. bicep/chest growth, waist reduction — and what it indicates about their training effectiveness. If no metrics available, say 'No body measurements recorded yet.')",
   "newRoutine": {
     "summary": "string (strategy overview)",
     "timetable": [
@@ -65,7 +70,10 @@ function buildUserPrompt(body: any): string {
     currentWeight,
     dailyReports = [],
     userProfile = {},
-    frequentFoods = []
+    frequentFoods = [],
+    bodyMetrics = {},
+    bodyMetricsLastUpdated,
+    bodyMetricsHistory = []
   } = body;
 
   const reportsSummary = dailyReports.map((r: any) => {
@@ -74,7 +82,36 @@ function buildUserPrompt(body: any): string {
 
   const foodsSummary = frequentFoods.map((f: any) => `${f.name} (${f.calories}kcal, ${f.protein}g protein)`).join(", ");
 
-  return `Here is the user's fitness plan details:\n- Plan Name: ${activePlanName}\n- Goal Path: ${startWeight}kg → ${goalWeight}kg (${goal})\n- Current Body Weight: ${currentWeight || startWeight}kg\n- Plan Duration: ${planDuration} months\n- Daily Target Baselines: ${targetCalories}kcal, ${targetProtein}g Protein, ${targetFats}g Fats, ${targetHydration}ml Hydration\n- Activity Level: ${activityLevel}\n\nUser Profile Preferences:\n- Dietary Preference: ${userProfile.dietPreference || "Flexible"}\n- Workout/Gym Timing: ${userProfile.gymTiming || "Not specified"}\n- Wake Time: ${userProfile.wakeTime || "06:30 AM"}\n- Bedtime: ${userProfile.sleepTime || "10:30 PM"}\n- Injuries/Context: ${userProfile.injuries || "None"}\n\nHistorical Most Consumed Foods:\n[ ${foodsSummary} ]\n\nWeekly Daily Reports:\n${reportsSummary || "No reports logged yet for this week."}\n\nBased on this data, provide the weekly performance review, actionable routine recommendation, and a new optimized daily routine JSON as described in the system prompt.`;
+  // Build body metrics section
+  const metricLabels: Record<string, string> = {
+    chest: "Chest", waist: "Waist", bicepsLeft: "Biceps (L)", bicepsRight: "Biceps (R)",
+    forearmLeft: "Forearm (L)", forearmRight: "Forearm (R)", shoulderWidth: "Shoulders",
+    thighLeft: "Thigh (L)", thighRight: "Thigh (R)", calfLeft: "Calf (L)", calfRight: "Calf (R)",
+  };
+  let bodyMetricsSummary = "";
+  const metricEntries = Object.entries(bodyMetrics).filter(([, v]) => v && parseFloat(v as string) > 0);
+  if (metricEntries.length > 0) {
+    bodyMetricsSummary = metricEntries.map(([k, v]) => `${metricLabels[k] || k}: ${v} cm`).join(", ");
+    if (bodyMetricsLastUpdated) {
+      bodyMetricsSummary += ` (last updated: ${new Date(bodyMetricsLastUpdated).toLocaleDateString()})`;
+    }
+  } else {
+    bodyMetricsSummary = "No body measurements recorded yet.";
+  }
+
+  let bodyMetricsHistorySummary = "";
+  if (bodyMetricsHistory.length > 0) {
+    bodyMetricsHistorySummary = bodyMetricsHistory.map((snap: any) => {
+      const date = new Date(snap.date).toLocaleDateString();
+      const entries = Object.entries(snap.bodyMetricsCm || {})
+        .filter(([, v]) => v && parseFloat(v as string) > 0)
+        .map(([k, v]) => `${metricLabels[k] || k}: ${v}cm`)
+        .join(", ");
+      return `  ${date}: ${entries || "No data"}`;
+    }).join("\n");
+  }
+
+  return `Here is the user's fitness plan details:\n- Plan Name: ${activePlanName}\n- Goal Path: ${startWeight}kg → ${goalWeight}kg (${goal})\n- Current Body Weight: ${currentWeight || startWeight}kg\n- Plan Duration: ${planDuration} months\n- Daily Target Baselines: ${targetCalories}kcal, ${targetProtein}g Protein, ${targetFats}g Fats, ${targetHydration}ml Hydration\n- Activity Level: ${activityLevel}\n\nUser Profile Preferences:\n- Dietary Preference: ${userProfile.dietPreference || "Flexible"}\n- Workout/Gym Timing: ${userProfile.gymTiming || "Not specified"}\n- Wake Time: ${userProfile.wakeTime || "06:30 AM"}\n- Bedtime: ${userProfile.sleepTime || "10:30 PM"}\n- Injuries/Context: ${userProfile.injuries || "None"}\n\nCurrent Body Measurements:\n${bodyMetricsSummary}\n\n${bodyMetricsHistorySummary ? `Body Measurements History (recent snapshots):\n${bodyMetricsHistorySummary}` : "No historical body measurement data available."}\n\nHistorical Most Consumed Foods:\n[ ${foodsSummary} ]\n\nWeekly Daily Reports:\n${reportsSummary || "No reports logged yet for this week."}\n\nBased on this data, provide the weekly performance review, actionable routine recommendation, body metrics insight, and a new optimized daily routine JSON as described in the system prompt.`;
 }
 
 export async function POST(request: Request) {

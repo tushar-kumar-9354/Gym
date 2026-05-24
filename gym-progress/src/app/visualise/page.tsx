@@ -14,8 +14,9 @@ import {
   Title,
   Tooltip,
   Legend,
+  Filler,
 } from "chart.js";
-import { BarChart2, PieChart, TrendingUp, Droplet, Dumbbell, Coffee, Sparkles, Target, Moon } from "lucide-react";
+import { BarChart2, PieChart, TrendingUp, Droplet, Dumbbell, Coffee, Sparkles, Target, Moon, Ruler } from "lucide-react";
 import { getExerciseTrackingType, formatExerciseValue } from "@/utils/oneRM";
 import { getHydrationTarget } from "@/lib/planTargets";
 
@@ -29,7 +30,8 @@ ChartJS.register(
   RadialLinearScale,
   Title,
   Tooltip,
-  Legend
+  Legend,
+  Filler
 );
 
 export default function Visualise() {
@@ -42,6 +44,11 @@ export default function Visualise() {
   const [waterIntake, setWaterIntake] = useState<{ [key: string]: number }>({});
   const [dailyReports, setDailyReports] = useState<any[]>([]);
   const [sleepLogs, setSleepLogs] = useState<{ [key: string]: { hours: number; quality: string } }>({});
+
+  // Body Metrics History
+  const [metricsHistory, setMetricsHistory] = useState<any[]>([]);
+  const [selectedMetric, setSelectedMetric] = useState("chest");
+  const [chartUnit, setChartUnit] = useState<"cm" | "in">("cm");
 
   // Plan Details
   const [goalWeight, setGoalWeight] = useState(75);
@@ -102,6 +109,12 @@ export default function Visualise() {
 
       const slpLogs = JSON.parse(localStorage.getItem(`${email}_${plan}_sleepLogs`) || "{}");
       setSleepLogs(slpLogs);
+    }
+
+    // Load body metrics history (plan-independent, tied to user email)
+    if (email) {
+      const mHistory = JSON.parse(localStorage.getItem(`${email}_metricsHistory`) || "[]");
+      setMetricsHistory(mHistory);
     }
   }, []);
 
@@ -625,6 +638,206 @@ export default function Visualise() {
               <Line data={sleepTrendData} options={options} />
             </div>
           </div>
+
+          {/* Chart 10: Body Metrics Progress */}
+          {(() => {
+            const metricLabels: Record<string, string> = {
+              chest: "Chest",
+              waist: "Waist",
+              bicepsLeft: "Biceps (Left)",
+              bicepsRight: "Biceps (Right)",
+              forearmLeft: "Forearm (Left)",
+              forearmRight: "Forearm (Right)",
+              shoulderWidth: "Shoulders",
+              thighLeft: "Thigh (Left)",
+              thighRight: "Thigh (Right)",
+              calfLeft: "Calf (Left)",
+              calfRight: "Calf (Right)",
+            };
+
+            const convertToUnit = (cmVal: number) => {
+              if (chartUnit === "cm") return cmVal;
+              return parseFloat((cmVal / 2.54).toFixed(1));
+            };
+
+            // Group history entries by granular date-time if there are multiple entries in the same month (for testing)
+            const monthlySnapshots: { month: string; value: number }[] = [];
+            const hasMultipleInSameMonth = (() => {
+              const months = metricsHistory.map((s: any) => s.date ? s.date.slice(0, 7) : "");
+              const uniqueMonths = new Set(months.filter(Boolean));
+              return metricsHistory.length > uniqueMonths.size;
+            })();
+
+            if (hasMultipleInSameMonth) {
+              // Detailed testing mode: show all snapshots with time
+              metricsHistory.forEach((snap: any) => {
+                if (!snap.date || !snap.bodyMetricsCm) return;
+                const val = parseFloat(snap.bodyMetricsCm?.[selectedMetric] || "0");
+                if (val > 0) {
+                  const formattedLabel = new Date(snap.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                  monthlySnapshots.push({ month: formattedLabel, value: val });
+                }
+              });
+            } else {
+              // Normal monthly mode
+              const byMonth: Record<string, any> = {};
+              metricsHistory.forEach((snap: any) => {
+                if (!snap.date || !snap.bodyMetricsCm) return;
+                const monthKey = snap.date.slice(0, 7); // YYYY-MM
+                byMonth[monthKey] = snap;
+              });
+              const sortedMonths = Object.keys(byMonth).sort();
+              sortedMonths.forEach(m => {
+                const val = parseFloat(byMonth[m].bodyMetricsCm?.[selectedMetric] || "0");
+                if (val > 0) {
+                  const [y, mm] = m.split("-");
+                  const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+                  const label = `${monthNames[parseInt(mm) - 1]} ${y}`;
+                  monthlySnapshots.push({ month: label, value: val });
+                }
+              });
+            }
+
+            const labels = monthlySnapshots.map(s => s.month);
+            const values = monthlySnapshots.map(s => convertToUnit(s.value));
+
+            const firstVal = values.length > 0 ? values[0] : 0;
+            const lastVal = values.length > 0 ? values[values.length - 1] : 0;
+            const changeCm = lastVal - firstVal;
+            const changePercent = firstVal > 0 ? ((changeCm / firstVal) * 100).toFixed(1) : "0.0";
+            const isGain = changeCm > 0;
+
+            const metricColors: Record<string, { border: string; bg: string }> = {
+              chest: { border: "#3b82f6", bg: "rgba(59,130,246,0.12)" },
+              waist: { border: "#ef4444", bg: "rgba(239,68,68,0.12)" },
+              bicepsLeft: { border: "#8b5cf6", bg: "rgba(139,92,246,0.12)" },
+              bicepsRight: { border: "#a855f7", bg: "rgba(168,85,247,0.12)" },
+              forearmLeft: { border: "#06b6d4", bg: "rgba(6,182,212,0.12)" },
+              forearmRight: { border: "#0891b2", bg: "rgba(8,145,178,0.12)" },
+              shoulderWidth: { border: "#f59e0b", bg: "rgba(245,158,11,0.12)" },
+              thighLeft: { border: "#10b981", bg: "rgba(16,185,129,0.12)" },
+              thighRight: { border: "#059669", bg: "rgba(5,150,105,0.12)" },
+              calfLeft: { border: "#f97316", bg: "rgba(249,115,22,0.12)" },
+              calfRight: { border: "#ea580c", bg: "rgba(234,88,12,0.12)" },
+            };
+            const color = metricColors[selectedMetric] || metricColors.chest;
+
+            const metricsChartData = {
+              labels: labels.length > 0 ? labels : ["No Data"],
+              datasets: [
+                {
+                  label: `${metricLabels[selectedMetric] || selectedMetric} (${chartUnit})`,
+                  data: values.length > 0 ? values : [0],
+                  borderColor: color.border,
+                  backgroundColor: color.bg,
+                  borderWidth: 3,
+                  tension: 0.35,
+                  pointRadius: 6,
+                  pointBackgroundColor: color.border,
+                  pointBorderColor: "#fff",
+                  pointBorderWidth: 2,
+                  pointHoverRadius: 8,
+                  fill: true,
+                },
+              ],
+            };
+
+            const metricsChartOptions = {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: {
+                  display: true,
+                  position: "top" as const,
+                  labels: { color: "#6b7280", font: { size: 12, weight: "bold" as const }, usePointStyle: true },
+                },
+                tooltip: {
+                  backgroundColor: "rgba(17,24,39,0.9)",
+                  titleColor: "#fff",
+                  bodyColor: "#d1d5db",
+                  padding: 12,
+                  cornerRadius: 10,
+                  callbacks: {
+                    label: function (context: any) {
+                      return `${context.dataset.label}: ${context.raw} ${chartUnit}`;
+                    },
+                  },
+                },
+              },
+              scales: {
+                y: {
+                  grid: { color: "#f3f4f6" },
+                  ticks: { color: "#9ca3af", callback: (v: any) => `${v} ${chartUnit}` },
+                },
+                x: { grid: { display: false }, ticks: { color: "#9ca3af", font: { size: 11 } } },
+              },
+            };
+
+            return (
+              <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-50 md:col-span-2">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-5">
+                  <div className="flex items-center gap-2">
+                    <Ruler className="text-indigo-500" size={20} />
+                    <h2 className="text-lg font-semibold text-gray-900">Body Metrics Progress</h2>
+                  </div>
+                  <div className="flex gap-2">
+                    <select
+                      value={chartUnit}
+                      onChange={(e) => setChartUnit(e.target.value as "cm" | "in")}
+                      className="bg-gray-50 border border-gray-100 rounded-2xl px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500 text-gray-700"
+                    >
+                      <option value="cm">Centimeters (cm)</option>
+                      <option value="in">Inches (in)</option>
+                    </select>
+                    <select
+                      value={selectedMetric}
+                      onChange={(e) => setSelectedMetric(e.target.value)}
+                      className="bg-gray-50 border border-gray-100 rounded-2xl px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500 text-gray-700"
+                    >
+                      {Object.entries(metricLabels).map(([key, label]) => (
+                        <option key={key} value={key}>{label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Change Summary Cards */}
+                {values.length >= 2 && (
+                  <div className="grid grid-cols-3 gap-3 mb-5">
+                    <div className="bg-gray-50 p-3 rounded-xl text-center">
+                      <p className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">First Record</p>
+                      <p className="text-lg font-bold text-gray-900 mt-1">{firstVal} {chartUnit}</p>
+                    </div>
+                    <div className="bg-gray-50 p-3 rounded-xl text-center">
+                      <p className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Latest</p>
+                      <p className="text-lg font-bold text-gray-900 mt-1">{lastVal} {chartUnit}</p>
+                    </div>
+                    <div className={`p-3 rounded-xl text-center ${isGain ? "bg-green-50" : "bg-red-50"}`}>
+                      <p className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Change</p>
+                      <p className={`text-lg font-bold mt-1 ${isGain ? "text-green-600" : "text-red-600"}`}>
+                        {isGain ? "+" : ""}{changeCm.toFixed(1)} {chartUnit}
+                      </p>
+                      <p className={`text-xs ${isGain ? "text-green-500" : "text-red-500"}`}>
+                        ({isGain ? "+" : ""}{changePercent}%)
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="h-72">
+                  {monthlySnapshots.length > 0 ? (
+                    <Line data={metricsChartData} options={metricsChartOptions} />
+                  ) : (
+                    <div className="flex flex-col items-center justify-center h-full text-gray-400">
+                      <Ruler size={40} className="mb-3 text-gray-300" />
+                      <p className="text-sm font-medium">No body metrics history yet.</p>
+                      <p className="text-xs mt-1">Save your measurements on the Metrics page to see progress here.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
 
         </div>
       )}

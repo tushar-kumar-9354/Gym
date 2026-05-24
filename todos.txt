@@ -1,6 +1,7 @@
 
+
 best/wporst strgnth exercise increse and average for specifi exercises in strengeth opag (done)
-body metrcies (biceps,kamar)
+body metrcies (biceps,kamar)(done partially)
 reminder notification (witb in msg custom meal + food chart ) 
 next notification remnder in prev msg 
 manual time table 
@@ -11,3 +12,5 @@ offline (badges accoding to gold silver platinum statue )
 leaderboard page (frind only feature 9notification if some one ahead of you)
 completed plan page ifx (add badges summary more better and story also and much more....)
 ai in metrcies 
+(sleep fix )
+percentage(fix) daily
