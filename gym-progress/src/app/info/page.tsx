@@ -108,36 +108,28 @@ export default function YourMetrics() {
     return converted;
   };
 
-  const [tick, setTick] = useState(0);
-  const [pageMountTime] = useState(() => Date.now());
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [hasOpenedModal, setHasOpenedModal] = useState(false);
 
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setTick((t) => t + 1);
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
-
-  const secondsSinceLastUpdate = lastMetricsUpdate
-    ? Math.floor((Date.now() - new Date(lastMetricsUpdate).getTime()) / 1000)
-    : Math.floor((Date.now() - pageMountTime) / 1000);
+  const daysSinceLastUpdate = lastMetricsUpdate
+    ? Math.floor((Date.now() - new Date(lastMetricsUpdate).getTime()) / (1000 * 60 * 60 * 24))
+    : Number.POSITIVE_INFINITY;
 
   const metricsReminder = !lastMetricsUpdate
-    ? `Monthly metrics are due now. Initializing test timer... (${secondsSinceLastUpdate}s elapsed)`
-    : secondsSinceLastUpdate >= 3
+    ? "Monthly metrics are due now. Update your body measurements to keep your progress visible."
+    : daysSinceLastUpdate >= 30
       ? "Your monthly body metrics are overdue. Please update them today."
-      : secondsSinceLastUpdate >= 2
+      : daysSinceLastUpdate >= 25
         ? "Your monthly body metrics are due soon."
         : "Monthly body metrics are up to date.";
 
   useEffect(() => {
-    if (secondsSinceLastUpdate >= 3 && !hasOpenedModal) {
+    const isOverdue = !lastMetricsUpdate || daysSinceLastUpdate >= 30;
+    if (isOverdue && !hasOpenedModal) {
       setIsModalOpen(true);
       setHasOpenedModal(true);
     }
-  }, [secondsSinceLastUpdate, hasOpenedModal]);
+  }, [daysSinceLastUpdate, hasOpenedModal, lastMetricsUpdate]);
 
   useEffect(() => {
     const email = localStorage.getItem("userEmail") || "";
@@ -507,7 +499,7 @@ export default function YourMetrics() {
         </div>
         <div className="flex items-center gap-2 text-sm text-amber-900">
           <CalendarClock size={16} />
-          {lastMetricsUpdate ? `Last updated ${new Date(lastMetricsUpdate).toLocaleTimeString()} (${secondsSinceLastUpdate}s ago)` : "No update saved yet"}
+          {lastMetricsUpdate ? `Last updated ${new Date(lastMetricsUpdate).toLocaleDateString()} (${daysSinceLastUpdate} days ago)` : "No update saved yet"}
         </div>
       </div>
 
@@ -642,7 +634,7 @@ export default function YourMetrics() {
                   <Ruler className="text-blue-500 animate-bounce" size={22} />
                   Time to Update Metrics!
                 </h2>
-                <p className="text-xs text-gray-500 mt-0.5">3 seconds elapsed. Enter your new metrics below to update your graphs.</p>
+                <p className="text-xs text-gray-500 mt-0.5">Your monthly metrics update is due. Enter your new metrics below to update your graphs.</p>
               </div>
               <button
                 type="button"

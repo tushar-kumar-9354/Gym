@@ -1,7 +1,7 @@
 
 
 best/wporst strgnth exercise increse and average for specifi exercises in strengeth opag (done)
-body metrcies (biceps,kamar)(done partially)
+body metrcies (biceps,kamar)(done partially)(done)
 reminder notification (witb in msg custom meal + food chart ) 
 next notification remnder in prev msg 
 manual time table 
