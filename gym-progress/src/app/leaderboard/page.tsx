@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { Crown, Trophy, Star } from "lucide-react";
 import usersData from "../../../data/serverUsers.json";
 
 export default function LeaderboardPage() {
@@ -10,7 +11,8 @@ export default function LeaderboardPage() {
   useEffect(() => {
     const compute = () => {
       try {
-        const results = (usersData || []).map((u: any) => {
+        const entries: any[] = [];
+        (usersData || []).forEach((u: any) => {
           const email = (u.email || "").toLowerCase();
 
           // try to load plan list (may be array of objects or strings)
@@ -25,41 +27,32 @@ export default function LeaderboardPage() {
             ? plansRaw.map(p => (typeof p === 'string' ? p : p?.name)).filter(Boolean)
             : [];
 
-          let allReports: any[] = [];
-
-          // load per-plan daily reports
+          // For each plan, compute average score for that plan only
           planNames.forEach((plan) => {
             try {
               const rpt = JSON.parse(localStorage.getItem(`${email}_${plan}_dailyReports`) || "[]");
-              if (Array.isArray(rpt)) allReports = allReports.concat(rpt);
-            } catch {}
+              if (Array.isArray(rpt) && rpt.length > 0) {
+                const uniqueByDate: Record<string, any> = {};
+                rpt.forEach((r: any) => { if (r && r.date) uniqueByDate[r.date] = r; });
+                const reports = Object.values(uniqueByDate);
+                const days = reports.length;
+                const avgScore = days > 0 ? Math.round(reports.reduce((acc: number, d: any) => acc + (Number(d.score) || 0), 0) / days) : 0;
+                entries.push({
+                  name: u.name || u.email,
+                  email: u.email,
+                  plan,
+                  avgScore,
+                  daysTracked: days,
+                  status: u.status || "",
+                });
+              }
+            } catch (e) {}
           });
-
-          // fallback to global user daily reports
-          try {
-            const fallback = JSON.parse(localStorage.getItem(`${email}_dailyReports`) || "[]");
-            if (Array.isArray(fallback)) allReports = allReports.concat(fallback);
-          } catch {}
-
-          // dedupe by date
-          const byDate: Record<string, any> = {};
-          allReports.forEach((r: any) => { if (r && r.date) byDate[r.date] = r; });
-          const uniqueReports = Object.values(byDate);
-
-          const days = uniqueReports.length;
-          const avgScore = days > 0 ? Math.round(uniqueReports.reduce((acc: number, d: any) => acc + (Number(d.score) || 0), 0) / days) : 0;
-
-          return {
-            name: u.name || u.email,
-            email: u.email,
-            avgScore,
-            daysTracked: days,
-            status: u.status || "",
-          };
         });
 
-        results.sort((a, b) => b.avgScore - a.avgScore);
-        setRows(results);
+        // sort by avgScore desc
+        entries.sort((a, b) => b.avgScore - a.avgScore);
+        setRows(entries);
       } catch (err) {
         console.error("Leaderboard compute error", err);
       } finally {
@@ -85,6 +78,7 @@ export default function LeaderboardPage() {
                 <tr className="text-xs uppercase text-gray-500">
                   <th className="pb-3">Rank</th>
                   <th className="pb-3">Member</th>
+                  <th className="pb-3">Plan</th>
                   <th className="pb-3">Average Score</th>
                   <th className="pb-3">Days Tracked</th>
                   <th className="pb-3">Status</th>
@@ -93,11 +87,28 @@ export default function LeaderboardPage() {
               <tbody>
                 {rows.map((r, i) => (
                   <tr key={r.email} className="border-t border-gray-100">
-                    <td className="py-3 font-bold w-12">#{i + 1}</td>
+                    <td className="py-3 font-bold w-12">
+                      {i === 0 ? (
+                        <span className="inline-flex items-center gap-2 text-yellow-500">
+                          <Crown size={18} />
+                        </span>
+                      ) : i === 1 ? (
+                        <span className="inline-flex items-center gap-2 text-slate-600">
+                          <Trophy size={16} />
+                        </span>
+                      ) : i === 2 ? (
+                        <span className="inline-flex items-center gap-2 text-amber-500">
+                          <Star size={16} />
+                        </span>
+                      ) : (
+                        `#${i + 1}`
+                      )}
+                    </td>
                     <td className="py-3">
                       <div className="font-semibold">{r.name}</div>
                       <div className="text-xs text-gray-400">{r.email}</div>
                     </td>
+                    <td className="py-3 font-medium text-slate-700">{r.plan}</td>
                     <td className="py-3 font-bold text-blue-600 w-40">{r.avgScore}</td>
                     <td className="py-3 w-32">{r.daysTracked}</td>
                     <td className="py-3 text-sm text-gray-600">{r.status}</td>
