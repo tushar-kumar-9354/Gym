@@ -9,7 +9,9 @@ reminder of weekly weightage rcokmmend to gain/cut wityh goal traj (fix old one)
 future(gift accoridng to month goal achieve minimum 70% avg process)
 offline (badges accoding to gold silver platinum statue )
 
-leaderboard page (frind only feature 9notification if some one ahead of you)(top3 will get special msgs in mail )and only top 10 is visible unless user clik n show all and also after 16th places everyone should be placed 16 not more than that
+leaderboard page (frind only feature 9notification if some one ahead of you)(top3 will get special msgs in mail )and only top 10 is visible unless user clik n show all and also after 16th places everyone should be placed 16 not more than that(overall ranking wise)(plan wise)(max badges wise)(max streak  consistency)
+
+leader bad detailin
 completed plan page ifx (add badges summary more better and story also and much more....)
 ai in metrcies 
 ###(sleep fix )(done  partially )
@@ -17,6 +19,5 @@ ai in metrcies
 ai report more deatils... add
 
 wokout alos calculated 
-####now listen sleep should be calclutaed by its timing and quality like the warning and penalty of sleep based on duration of sleep add a weightage of penalty based on quality means if quality is poor then give 60% of quality sleep if fair then 754% if good then 90% if excellend thenn give 100% to the points so make it or update sleep based on both quality or duration and for that use most appropriate formaula accodding to younow ,make weekly progreess to  really 7 days inseated of 3seconds that we are using for testing same for your monthly mtrices to  appears in real after each one month ...
 
 AI Personalization & Profile Recordmore detailin time table page.

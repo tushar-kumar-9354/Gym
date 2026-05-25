@@ -12,6 +12,7 @@ export default function LeaderboardPage() {
     const compute = () => {
       try {
         const entries: any[] = [];
+        const evaluating: any[] = [];
         (usersData || []).forEach((u: any) => {
           const email = (u.email || "").toLowerCase();
 
@@ -27,24 +28,37 @@ export default function LeaderboardPage() {
             ? plansRaw.map(p => (typeof p === 'string' ? p : p?.name)).filter(Boolean)
             : [];
 
-          // For each plan, compute average score for that plan only
+          // For each plan, compute 10-day rolling average for that plan only
           planNames.forEach((plan) => {
             try {
               const rpt = JSON.parse(localStorage.getItem(`${email}_${plan}_dailyReports`) || "[]");
               if (Array.isArray(rpt) && rpt.length > 0) {
                 const uniqueByDate: Record<string, any> = {};
                 rpt.forEach((r: any) => { if (r && r.date) uniqueByDate[r.date] = r; });
-                const reports = Object.values(uniqueByDate);
+                const reports = Object.values(uniqueByDate).sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
                 const days = reports.length;
-                const avgScore = days > 0 ? Math.round(reports.reduce((acc: number, d: any) => acc + (Number(d.score) || 0), 0) / days) : 0;
-                entries.push({
-                  name: u.name || u.email,
-                  email: u.email,
-                  plan,
-                  avgScore,
-                  daysTracked: days,
-                  status: u.status || "",
-                });
+                if (days >= 10) {
+                  // take last 10 days for rolling average
+                  const last10 = reports.slice(-10);
+                  const avgScore = Math.round(last10.reduce((acc: number, d: any) => acc + (Number(d.score) || 0), 0) / 10);
+                  entries.push({
+                    name: u.name || u.email,
+                    email: u.email,
+                    plan,
+                    avgScore,
+                    daysTracked: days,
+                    status: u.status || "",
+                  });
+                } else {
+                  // not enough history yet — mark as evaluating
+                  evaluating.push({
+                    name: u.name || u.email,
+                    email: u.email,
+                    plan,
+                    daysTracked: days,
+                    status: 'Evaluating...'
+                  });
+                }
               }
             } catch (e) {}
           });
@@ -52,7 +66,9 @@ export default function LeaderboardPage() {
 
         // sort by avgScore desc
         entries.sort((a, b) => b.avgScore - a.avgScore);
-        setRows(entries);
+        // append evaluating entries at the end with low priority
+        const full = entries.concat(evaluating);
+        setRows(full);
       } catch (err) {
         console.error("Leaderboard compute error", err);
       } finally {

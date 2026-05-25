@@ -3,11 +3,11 @@
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Dumbbell, Utensils, Target, Calendar, User, BarChart2, ChevronDown, Menu, X, LogOut, FileBarChart } from "lucide-react";
+import { Dumbbell, Utensils, Target, Calendar, User, BarChart2, ChevronDown, Menu, X, LogOut, FileBarChart, Trophy, Medal } from "lucide-react";
 
 export default function TopNav() {
   const pathname = usePathname();
-  const [activeDropdown, setActiveDropdown] = useState<"progress" | "routine" | "settings" | null>(null);
+  const [activeDropdown, setActiveDropdown] = useState<"progress" | "routine" | "settings" | "achievements" | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
@@ -45,6 +45,11 @@ export default function TopNav() {
     { name: "Daily Routine", href: "/journey", icon: Calendar },
     { name: "Visualise Analytics", href: "/visualise", icon: BarChart2 },
     { name: "Strength Tracker", href: "/strength", icon: Dumbbell },
+  ];
+
+  const achievementsItems = [
+    { name: "Leaderboard", href: "/leaderboard", icon: Trophy },
+    { name: "Badges", href: "/achievements/badges", icon: Medal },
   ];
 
   const routineItems = [
@@ -120,6 +125,41 @@ export default function TopNav() {
             </div>
 
             {/* 2. Routine Dropdown */}
+            {/* 2. Achievements Dropdown */}
+            <div className="relative">
+              <button
+                onClick={() => setActiveDropdown(activeDropdown === "achievements" ? null : "achievements")}
+                className={`flex items-center gap-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activeDropdown === "achievements" || achievementsItems.some(i => pathname === i.href)
+                    ? "bg-blue-50 text-blue-500" 
+                    : "text-gray-600 hover:bg-gray-50 hover:text-blue-500"
+                }`}
+              >
+                <span>Achievements</span>
+                <ChevronDown size={14} className={`transition-transform duration-200 ${activeDropdown === "achievements" ? "rotate-180" : ""}`} />
+              </button>
+
+              {activeDropdown === "achievements" && (
+                <div className="absolute left-0 mt-2 w-48 bg-white border border-gray-100 rounded-xl shadow-lg py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-250">
+                  {achievementsItems.map((item) => (
+                    <Link
+                      key={item.name}
+                      href={item.href}
+                      onClick={() => setActiveDropdown(null)}
+                      className={`flex items-center gap-2 px-4 py-2.5 text-sm transition-colors ${
+                        pathname === item.href 
+                          ? "bg-blue-50 text-blue-500 font-bold" 
+                          : "text-gray-700 hover:bg-gray-50 hover:text-blue-500"
+                      }`}
+                    >
+                      <item.icon size={16} className="text-gray-400 shrink-0" />
+                      <span>{item.name}</span>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <div className="relative">
               <button
                 onClick={() => setActiveDropdown(activeDropdown === "routine" ? null : "routine")}
