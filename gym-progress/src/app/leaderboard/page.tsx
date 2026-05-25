@@ -16,6 +16,13 @@ export default function LeaderboardPage() {
         (usersData || []).forEach((u: any) => {
           const email = (u.email || "").toLowerCase();
 
+          // load unlocked badges count for this user (persisted from badges page)
+          let badgeCount = 0;
+          try {
+            const unlocked = JSON.parse(localStorage.getItem(`${email}_unlockedBadges`) || '[]');
+            badgeCount = Array.isArray(unlocked) ? unlocked.length : 0;
+          } catch (e) { badgeCount = 0; }
+
           // try to load plan list (may be array of objects or strings)
           let plansRaw: any[] = [];
           try {
@@ -47,6 +54,7 @@ export default function LeaderboardPage() {
                     plan,
                     avgScore,
                     daysTracked: days,
+                    badgeCount,
                     status: u.status || "",
                   });
                 } else {
@@ -56,7 +64,8 @@ export default function LeaderboardPage() {
                     email: u.email,
                     plan,
                     daysTracked: days,
-                    status: 'Evaluating...'
+                    status: 'Evaluating...',
+                    badgeCount,
                   });
                 }
               }
@@ -97,12 +106,12 @@ export default function LeaderboardPage() {
                   <th className="pb-3">Plan</th>
                   <th className="pb-3">Average Score</th>
                   <th className="pb-3">Days Tracked</th>
-                  <th className="pb-3">Status</th>
+                  <th className="pb-3">Badges</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((r, i) => (
-                  <tr key={r.email} className="border-t border-gray-100">
+                  <tr key={`${r.email}_${r.plan}_${i}`} className="border-t border-gray-100">
                     <td className="py-3 font-bold w-12">
                       {i === 0 ? (
                         <span className="inline-flex items-center gap-2 text-yellow-500">
@@ -125,9 +134,9 @@ export default function LeaderboardPage() {
                       <div className="text-xs text-gray-400">{r.email}</div>
                     </td>
                     <td className="py-3 font-medium text-slate-700">{r.plan}</td>
-                    <td className="py-3 font-bold text-blue-600 w-40">{r.avgScore}</td>
+                    <td className="py-3 font-bold text-blue-600 w-40">{typeof r.avgScore !== 'undefined' && r.avgScore !== null ? r.avgScore : '—'}</td>
                     <td className="py-3 w-32">{r.daysTracked}</td>
-                    <td className="py-3 text-sm text-gray-600">{r.status}</td>
+                    <td className="py-3 text-sm text-gray-600">{r.badgeCount || 0}</td>
                   </tr>
                 ))}
               </tbody>

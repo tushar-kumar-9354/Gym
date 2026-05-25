@@ -11,7 +11,8 @@ offline (badges accoding to gold silver platinum statue )
 
 leaderboard page (frind only feature 9notification if some one ahead of you)(top3 will get special msgs in mail )and only top 10 is visible unless user clik n show all and also after 16th places everyone should be placed 16 not more than that(overall ranking wise)(plan wise)(max badges wise)(max streak  consistency)
 
-leader bad detailin
+leaderboarad detailin
+(all badges unlocked achieevement)
 completed plan page ifx (add badges summary more better and story also and much more....)
 ai in metrcies 
 ###(sleep fix )(done  partially )

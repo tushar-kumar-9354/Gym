@@ -11,6 +11,8 @@ export default function BadgesPage() {
   const [badges, setBadges] = useState<any>({});
   const [selectedTab, setSelectedTab] = useState<string>("all");
   const [selectedBadge, setSelectedBadge] = useState<any>(null);
+  const [showToast, setShowToast] = useState<boolean>(false);
+  const [toastBadge, setToastBadge] = useState<any>(null);
 
   useEffect(() => {
     const email = (localStorage.getItem('userEmail') || '').toLowerCase();
@@ -132,22 +134,77 @@ export default function BadgesPage() {
     const leaderboardBadges = { top10pct: isTopContender, pro: isPro, consistencyPro: isConsistencyPro };
 
     setBadges({ reportBadges, streakBadges, leaderboardBadges, totalReports, currentStreak, maxStreak });
+
+    // detect newly unlocked badges compared to stored state
+    try {
+      const idMap: Record<string, any> = {
+        submissionI: { title: 'Novice', desc: 'Submit your first report' },
+        submissionII: { title: 'Beginner', desc: 'Submit 10 reports' },
+        submissionIII: { title: 'Intermediate', desc: 'Submit 50 reports' },
+        submissionIV: { title: 'Expert', desc: 'Submit 100 reports' },
+        streak1: { title: 'Spark', desc: '1 day streak' },
+        streak7: { title: 'Committed', desc: '7 day streak' },
+        streak2: { title: 'Flame', desc: '10 day streak' },
+        streak3: { title: 'Blaze', desc: '30 day streak' },
+        top10pct: { title: 'Top Contender', desc: 'Top 10% performer' },
+        pro: { title: 'The Pro', desc: 'Held #1 locally' },
+        consistencyPro: { title: 'Consistency Pro', desc: '90%+ across quarter' },
+        veteran: { title: 'Veteran', desc: '1000 reports (long haul)' }
+      };
+
+      const unlockedNow: string[] = [];
+      if (reportBadges.submissionI) unlockedNow.push('submissionI');
+      if (reportBadges.submissionII) unlockedNow.push('submissionII');
+      if (reportBadges.submissionIII) unlockedNow.push('submissionIII');
+      if (reportBadges.submissionIV) unlockedNow.push('submissionIV');
+      if (streakBadges.streak1) unlockedNow.push('streak1');
+      if ((maxStreak || 0) >= 7) unlockedNow.push('streak7');
+      if (streakBadges.streak2) unlockedNow.push('streak2');
+      if (streakBadges.streak3) unlockedNow.push('streak3');
+      if (leaderboardBadges.top10pct) unlockedNow.push('top10pct');
+      if (leaderboardBadges.pro) unlockedNow.push('pro');
+      if (leaderboardBadges.consistencyPro) unlockedNow.push('consistencyPro');
+      if ((totalReports || 0) >= 1000) unlockedNow.push('veteran');
+
+      const key = `${email}_unlockedBadges`;
+      const prev: string[] = JSON.parse(localStorage.getItem(key) || '[]');
+      const newly = unlockedNow.filter(id => !prev.includes(id));
+      if (newly.length > 0) {
+        const nid = newly[0];
+        setToastBadge({ id: nid, ...(idMap[nid] || {}) });
+        setShowToast(true);
+        setTimeout(() => setShowToast(false), 5200);
+      }
+      localStorage.setItem(key, JSON.stringify(unlockedNow));
+    } catch (e) {}
   }, []);
 
   const user = (usersData || []).find((u:any) => (u.email||'').toLowerCase() === (userEmail||'').toLowerCase());
 
   const allBadgeItems = [
-    { id: 'submissionI', title: 'Novice', desc: 'Submit your first report', unlocked: Boolean(badges.reportBadges?.submissionI), type: 'submission', icon: Star, progress: [badges.totalReports||0, 1] },
-    { id: 'submissionII', title: 'Beginner', desc: 'Submit 10 reports', unlocked: Boolean(badges.reportBadges?.submissionII), type: 'submission', icon: Medal, progress: [badges.totalReports||0, 10] },
-    { id: 'submissionIII', title: 'Intermediate', desc: 'Submit 50 reports', unlocked: Boolean(badges.reportBadges?.submissionIII), type: 'submission', icon: Trophy, progress: [badges.totalReports||0, 50] },
-    { id: 'submissionIV', title: 'Expert', desc: 'Submit 100 reports', unlocked: Boolean(badges.reportBadges?.submissionIV), type: 'submission', icon: Award, progress: [badges.totalReports||0, 100] },
-    { id: 'streak1', title: 'Streak: 1', desc: '1 day streak', unlocked: Boolean(badges.streakBadges?.streak1), type: 'streak', icon: Zap, progress: [badges.currentStreak||0, 1] },
-    { id: 'streak2', title: 'Streak: 10', desc: '10 day streak', unlocked: Boolean(badges.streakBadges?.streak2), type: 'streak', icon: Zap, progress: [badges.maxStreak||0, 10] },
-    { id: 'streak3', title: 'Streak: 30', desc: '30 day streak', unlocked: Boolean(badges.streakBadges?.streak3), type: 'streak', icon: Zap, progress: [badges.maxStreak||0, 30] },
-    { id: 'top10pct', title: 'Top Contender', desc: 'Top 10% performer', unlocked: Boolean(badges.leaderboardBadges?.top10pct), type: 'leader', icon: Trophy, progress: [badges.totalReports||0, 10] },
-    { id: 'pro', title: 'The Pro', desc: 'Held #1 locally', unlocked: Boolean(badges.leaderboardBadges?.pro), type: 'leader', icon: Star, progress: [0, 1] },
-    { id: 'consistencyPro', title: 'Consistency Pro', desc: '90%+ across quarter', unlocked: Boolean(badges.leaderboardBadges?.consistencyPro), type: 'leader', icon: Medal, progress: [0, 1] },
+    { id: 'submissionI', title: 'Novice', desc: 'Submit your first report', unlocked: Boolean(badges.reportBadges?.submissionI), type: 'submission', icon: Star, progress: [badges.totalReports||0, 1], tier: 'bronze' },
+    { id: 'submissionII', title: 'Beginner', desc: 'Submit 10 reports', unlocked: Boolean(badges.reportBadges?.submissionII), type: 'submission', icon: Medal, progress: [badges.totalReports||0, 10], tier: 'silver' },
+    { id: 'submissionIII', title: 'Intermediate', desc: 'Submit 50 reports', unlocked: Boolean(badges.reportBadges?.submissionIII), type: 'submission', icon: Trophy, progress: [badges.totalReports||0, 50], tier: 'gold' },
+    { id: 'submissionIV', title: 'Expert', desc: 'Submit 100 reports', unlocked: Boolean(badges.reportBadges?.submissionIV), type: 'submission', icon: Award, progress: [badges.totalReports||0, 100], tier: 'diamond' },
+    { id: 'streak1', title: 'Spark', desc: '1 day streak', unlocked: Boolean(badges.streakBadges?.streak1), type: 'streak', icon: Zap, progress: [badges.currentStreak||0, 1], tier: 'bronze' },
+    { id: 'streak7', title: 'Committed', desc: '7 day streak', unlocked: (badges.maxStreak||0) >= 7, type: 'streak', icon: Zap, progress: [Math.min(badges.maxStreak||0,7), 7], tier: 'silver' },
+    { id: 'streak2', title: 'Flame', desc: '10 day streak', unlocked: Boolean(badges.streakBadges?.streak2), type: 'streak', icon: Zap, progress: [badges.maxStreak||0, 10], tier: 'gold' },
+    { id: 'streak3', title: 'Blaze', desc: '30 day streak', unlocked: Boolean(badges.streakBadges?.streak3), type: 'streak', icon: Zap, progress: [badges.maxStreak||0, 30], tier: 'diamond' },
+    { id: 'consistencyPro', title: 'Consistency Pro', desc: '90%+ across quarter', unlocked: Boolean(badges.leaderboardBadges?.consistencyPro), type: 'leader', icon: Medal, progress: [0, 1], tier: 'gold' },
+    { id: 'top10pct', title: 'Top Contender', desc: 'Top 10% performer', unlocked: Boolean(badges.leaderboardBadges?.top10pct), type: 'leader', icon: Trophy, progress: [0, 1], tier: 'diamond' },
+    { id: 'pro', title: 'The Pro', desc: 'Held #1 locally', unlocked: Boolean(badges.leaderboardBadges?.pro), type: 'leader', icon: Star, progress: [0, 1], tier: 'diamond' },
+    { id: 'veteran', title: 'Veteran', desc: '1000 reports (long haul)', unlocked: (badges.totalReports||0) >= 1000, type: 'milestone', icon: Award, progress: [badges.totalReports||0, 1000], tier: 'diamond' },
   ];
+
+  const colorFor = (tier: string) => {
+    switch (tier) {
+      case 'bronze': return { from: 'from-amber-300', to: 'to-amber-500', text: 'text-amber-700' };
+      case 'silver': return { from: 'from-slate-200', to: 'to-slate-400', text: 'text-slate-700' };
+      case 'gold': return { from: 'from-yellow-300', to: 'to-yellow-500', text: 'text-yellow-700' };
+      case 'diamond': return { from: 'from-indigo-300', to: 'to-indigo-600', text: 'text-indigo-700' };
+      default: return { from: 'from-gray-200', to: 'to-gray-400', text: 'text-gray-700' };
+    }
+  };
 
   const filtered = allBadgeItems.filter(b => {
     if (selectedTab === 'all') return true;
@@ -188,10 +245,13 @@ export default function BadgesPage() {
           <div className="grid grid-cols-3 gap-4">
             {filtered.map((b) => {
               const Icon = b.icon;
+              const cols = colorFor(b.tier || 'bronze');
               return (
-                <button key={b.id} onClick={() => setSelectedBadge(b)} className="flex flex-col items-center gap-2 p-3 bg-amber-50 rounded-2xl border hover:shadow">
-                  <div className={`w-20 h-20 rounded-full flex items-center justify-center ${b.unlocked ? 'bg-white' : 'bg-gray-100'}`}>
-                    <Icon className={`w-10 h-10 ${b.unlocked ? 'text-amber-500' : 'text-gray-400'}`} />
+                <button key={b.id} onClick={() => setSelectedBadge(b)} className={`flex flex-col items-center gap-2 p-3 rounded-2xl transform transition hover:scale-105 focus:scale-105 ${b.unlocked ? 'shadow-2xl' : 'shadow-sm'}`}>
+                  <div className={`w-20 h-20 rounded-full flex items-center justify-center ${b.unlocked ? `bg-gradient-to-br ${cols.from} ${cols.to} text-white` : 'bg-gray-50' } ring-1 ring-white/30`}>
+                    <div className={`${b.unlocked ? 'animate-pulse' : ''}`}>
+                      <Icon className={`w-10 h-10 ${b.unlocked ? 'text-white' : 'text-gray-400'}`} />
+                    </div>
                   </div>
                   <div className="text-sm font-medium">{b.title}</div>
                 </button>
@@ -227,6 +287,36 @@ export default function BadgesPage() {
             </div>
           </div>
         )}
+        {/* Toast for unlocks */}
+        {showToast && toastBadge && (
+          <div className="fixed left-1/2 transform -translate-x-1/2 top-8 z-50">
+            <div className="relative w-96 bg-gradient-to-r from-amber-400 to-pink-400 text-white rounded-2xl p-4 shadow-2xl overflow-hidden">
+              <div className="absolute inset-0 pointer-events-none">
+                {/* simple confetti pieces */}
+                {[...Array(16)].map((_,i)=> (
+                  <span key={i} style={{ left: `${(i*7)%100}%`, top: `${-10 - (i%3)*6}px`, transform: `rotate(${i*30}deg)` }} className={`absolute block w-2 h-4 bg-white/80 rounded-sm animate-confetti`} />
+                ))}
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center text-2xl font-bold">
+                  🎉
+                </div>
+                <div>
+                  <div className="text-sm opacity-90">Achievement Unlocked</div>
+                  <div className="font-semibold text-lg">{toastBadge.title}</div>
+                  <div className="text-xs opacity-90">{toastBadge.desc}</div>
+                </div>
+                <div className="ml-auto">
+                  <button onClick={() => setShowToast(false)} className="text-white/90">✕</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        <style>{`
+          @keyframes confetti-fall { 0% { transform: translateY(-10px) rotate(0deg); opacity: 1 } 100% { transform: translateY(160px) rotate(200deg); opacity: 0 } }
+          .animate-confetti { animation: confetti-fall 1.6s linear forwards; }
+        `}</style>
       </div>
     </div>
   );
