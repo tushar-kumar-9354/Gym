@@ -17,6 +17,8 @@ export async function POST(request: Request) {
     if (action === "send") {
       // Generate random 4 digit OTP (may be overridden by DEFAULT_OTP)
       let generatedOtp = Math.floor(1000 + Math.random() * 9000).toString();
+      // Always store the OTP so verification works even after SMTP send
+      otpStore.set(email, generatedOtp);
 
       console.log(`\n========================================\n[DEV DEBUG] Generated OTP for ${email} is: ${generatedOtp}\n========================================\n`);
       console.log(`[AUTH] Attempting to send SMTP OTP to ${email}...`);
