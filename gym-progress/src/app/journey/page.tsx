@@ -370,6 +370,24 @@ function JourneyContent() {
     alert(`Custom exercise "${newCustomExercise}" saved for ${bodyPart}!`);
   };
 
+  const handleRemoveCustomExercise = (name: string) => {
+    if (!userEmail) return;
+    if (!confirm(`Remove custom exercise "${name}" from ${bodyPart}?`)) return;
+    const updatedDB = { ...customExerciseDB };
+    if (updatedDB[bodyPart]) {
+      updatedDB[bodyPart] = updatedDB[bodyPart].filter((e: string) => e !== name);
+      if (updatedDB[bodyPart].length === 0) delete updatedDB[bodyPart];
+      localStorage.setItem(`${userEmail}_customExercises`, JSON.stringify(updatedDB));
+      setCustomExerciseDB(updatedDB);
+      // if the removed exercise is currently selected, reset to first available
+      if (exercise === name) {
+        const avail = getAvailableExercises(bodyPart);
+        setExercise(avail[0] || "");
+      }
+      alert(`Removed custom exercise "${name}"`);
+    }
+  };
+
   const handleWeightModifier = (mod: number) => {
     const currentVal = parseFloat(weight) || 0;
     const newVal = Math.max(0, currentVal + mod);
@@ -1109,6 +1127,20 @@ function JourneyContent() {
                   Save Exercise
                 </button>
               </form>
+
+              {/* Custom exercises for this body part (with remove option) */}
+              { (customExerciseDB[bodyPart] || []).length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {(customExerciseDB[bodyPart] || []).map((ce: string) => (
+                    <span key={ce} className="inline-flex items-center gap-2 bg-white border border-gray-100 rounded-full px-3 py-1 text-sm">
+                      <button type="button" onClick={() => setExercise(ce)} className="text-slate-700 hover:text-blue-600">{ce}</button>
+                      <button type="button" onClick={() => handleRemoveCustomExercise(ce)} className="text-red-400 hover:text-red-600">
+                        <Trash2 size={14} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
 
               <form onSubmit={handleAddLog} className="space-y-4 border-t border-gray-50 pt-3">
                 {getExerciseTrackingType(exercise, bodyPart) === "Time" ? (

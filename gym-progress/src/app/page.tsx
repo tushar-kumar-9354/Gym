@@ -911,7 +911,19 @@ export default function Dashboard() {
     }
     groupedSetsMap[key].sets.push(log);
   });
-  const displayedSets = Object.values(groupedSetsMap);
+  // Ensure sets in each group are sorted and have sequential setNumber (1..n)
+  const displayedSets = Object.values(groupedSetsMap).map(group => {
+    const sorted = group.sets.slice().sort((a: any, b: any) => {
+      // Prefer numeric setNumber if present, otherwise fallback to timestamp or insertion order
+      const aNum = Number(a.setNumber) || 0;
+      const bNum = Number(b.setNumber) || 0;
+      if (aNum !== bNum) return aNum - bNum;
+      const aTime = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+      const bTime = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+      return aTime - bTime;
+    }).map((s: any, i: number) => ({ ...s, setNumber: i + 1 }));
+    return { ...group, sets: sorted };
+  });
 
   // Exercise Chart Filter
   const filteredLogs = exerciseLogs.filter(l => l.exercise === selectedExercise);

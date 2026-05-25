@@ -19,12 +19,12 @@ interface ExerciseLog {
 }
 
 const DEFAULT_EXERCISES: Record<string, string[]> = {
-  Chest: ["Bench Press", "Incline Dumbbell Press", "Incline Barbell Press", "Chest Flyes"],
-  Back: ["Deadlift", "Pull-ups", "Bent Over Rows", "Lat Pulldowns"],
-  Legs: ["Squat", "Leg Press", "Lying Leg Curls", "Calf Raises"],
-  Shoulders: ["Overhead Press", "Lateral Raises", "Military Press", "Arnold Press"],
-  Arms: ["Bicep Curls", "Tricep Pushdowns", "Hammer Curls", "Skull Crushers"],
-  Abs: ["Plank", "Crunches", "Leg Raises", "Russian Twists"]
+  Chest: ["Bench Press", "Incline Dumbbell Press", "Chest Flyes"],
+  Back: ["Deadlift", "Pull-ups", "Bent Over Rows"],
+  Legs: ["Squat", "Leg Press", "Calf Raises"],
+  Shoulders: ["Overhead Press", "Lateral Raises"],
+  Arms: ["Bicep Curls", "Tricep Pushdowns"],
+  Abs: ["Plank", "Crunches", "Leg Raises", "Russian Twists"],
 };
 
 export default function StrengthTracker() {
@@ -38,6 +38,7 @@ export default function StrengthTracker() {
   const [userEmail, setUserEmail] = useState<string>("");
   const [activePlan, setActivePlan] = useState<string | null>(null);
   const [logs, setLogs] = useState<ExerciseLog[]>([]);
+  const [customExerciseDB, setCustomExerciseDB] = useState<{ [key: string]: string[] }>({});
   const [goals, setGoals] = useState<Record<string, number>>({});
   const [newGoal, setNewGoal] = useState<string>("");
   const [isEditingGoal, setIsEditingGoal] = useState<boolean>(false);
@@ -79,6 +80,8 @@ export default function StrengthTracker() {
         console.error("Error parsing exercise logs", e);
         setLogs([]);
       }
+      const savedCustomEx = JSON.parse(localStorage.getItem(`${email}_customExercises`) || "{}");
+      setCustomExerciseDB(savedCustomEx);
     } else {
       setLogs([]);
     }
@@ -119,7 +122,7 @@ export default function StrengthTracker() {
   // Update default exercise when tab changes
   const handleTabChange = (tab: string) => {
     setActiveTab(tab);
-    const firstEx = DEFAULT_EXERCISES[tab]?.[0] || "";
+    const firstEx = getAvailableExercises(tab)[0] || DEFAULT_EXERCISES[tab]?.[0] || "";
     setExercise(firstEx);
   };
 
@@ -158,6 +161,12 @@ export default function StrengthTracker() {
     const mon = months[parsed.getMonth()];
     const yr = parsed.getFullYear();
     return `${day}/${mon}/${yr}`;
+  };
+
+  const getAvailableExercises = (part: string) => {
+    const defaults = DEFAULT_EXERCISES[part] || [];
+    const customs = customExerciseDB[part] || [];
+    return [...defaults, ...customs];
   };
 
   if (trajectoryMode === 'exercise') {
@@ -411,7 +420,7 @@ export default function StrengthTracker() {
               Select Target Exercise
             </h2>
             <div className="space-y-2">
-              {DEFAULT_EXERCISES[activeTab]?.map((ex) => (
+              {getAvailableExercises(activeTab).map((ex) => (
                 <button
                   type="button"
                   key={ex}
