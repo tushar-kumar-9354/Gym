@@ -15,12 +15,10 @@ export async function POST(request: Request) {
 
     // Handle Send OTP
     if (action === "send") {
-      // Generate random 4 digit OTP
-      const generatedOtp = Math.floor(1000 + Math.random() * 9000).toString();
-      otpStore.set(email, generatedOtp);
+      // Generate random 4 digit OTP (may be overridden by DEFAULT_OTP)
+      let generatedOtp = Math.floor(1000 + Math.random() * 9000).toString();
 
       console.log(`\n========================================\n[DEV DEBUG] Generated OTP for ${email} is: ${generatedOtp}\n========================================\n`);
-
       console.log(`[AUTH] Attempting to send SMTP OTP to ${email}...`);
 
       try {
@@ -28,12 +26,15 @@ export async function POST(request: Request) {
         const smtpUser = process.env.SMTP_USER;
         const smtpPass = process.env.SMTP_PASS;
 
-        // If SMTP credentials are not configured, fall back to logging the OTP (development-safe)
+        // If SMTP credentials are not configured, fall back to a default OTP (development-safe)
         if (!smtpUser || !smtpPass) {
-          console.warn(`[SMTP CONFIG] SMTP credentials not set. OTP for ${email}: ${generatedOtp}`);
+          const defaultOtp = process.env.DEFAULT_OTP ?? "1234";
+          generatedOtp = defaultOtp;
+          otpStore.set(email, generatedOtp);
+          console.warn(`[SMTP CONFIG] SMTP credentials not set. Using DEFAULT OTP for ${email}: ${generatedOtp}`);
           return NextResponse.json({
             success: true,
-            message: "SMTP not configured: OTP logged on server (development fallback).",
+            message: "SMTP not configured: default OTP set (development fallback).",
           });
         }
 
@@ -76,10 +77,14 @@ export async function POST(request: Request) {
         });
       } catch (smtpError: any) {
         console.error("[SMTP ERROR] Failed to send email via nodemailer:", smtpError);
-        console.log(`\n========================================\n[DEV FALLBACK] Email OTP for ${email} is: ${generatedOtp}\n========================================\n`);
+        // On SMTP failure, set a safe default OTP so the user can still proceed in development
+        const defaultOtp = process.env.DEFAULT_OTP ?? "1234";
+        generatedOtp = defaultOtp;
+        otpStore.set(email, generatedOtp);
+        console.log(`\n========================================\n[DEV FALLBACK] Using DEFAULT OTP for ${email}: ${generatedOtp}\n========================================\n`);
         return NextResponse.json({
           success: true,
-          message: "SMTP failed. OTP was logged in the server console (fallback).",
+          message: "SMTP failed: default OTP set (fallback).",
         });
       }
     }
