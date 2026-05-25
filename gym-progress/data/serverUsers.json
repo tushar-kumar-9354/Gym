@@ -8,5 +8,14 @@
     "validUntil": "2026-06-24T00:00:00.000Z",
     "createdAt": "2026-05-24T09:46:25.188Z",
     "updatedAt": "2026-05-25T09:30:43.862Z"
+  },
+  {
+    "email": "jangratushar348@gmail.com",
+    "name": "tesss",
+    "role": "client",
+    "passwordHash": "a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3",
+    "status": "active",
+    "validUntil": "2026-06-25T14:33:15.257Z",
+    "createdAt": "2026-05-25T14:33:15.257Z"
   }
 ]
