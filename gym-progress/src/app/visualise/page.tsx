@@ -111,9 +111,11 @@ export default function Visualise() {
       setSleepLogs(slpLogs);
     }
 
-    // Load body metrics history (plan-independent, tied to user email)
+    // Load body metrics history - prefer plan-scoped history when active
     if (email) {
-      const mHistory = JSON.parse(localStorage.getItem(`${email}_metricsHistory`) || "[]");
+      const planKey = plan ? `${email}_${plan}_metricsHistory` : null;
+      const fallbackKey = `${email}_metricsHistory`;
+      const mHistory = JSON.parse(localStorage.getItem(planKey || fallbackKey) || "[]");
       setMetricsHistory(mHistory);
     }
   }, []);

@@ -11,7 +11,7 @@ import { computeGoldilocksScores, computeAdvancedGoldilocksScores } from "@/lib/
 import { computePlanTargets } from "@/lib/planTargets";
 
 export default function Dashboard() {
-  const TEST_MODE = true; // enable rapid testing so weigh-ins reappear after 3 seconds
+  const TEST_MODE = false; // production: real timing (weekly weigh-ins every 7 days)
   const [activePlan, setActivePlan] = useState<string | null>(null);
   const [userName, setUserName] = useState("User");
   const [userEmail, setUserEmail] = useState("");
@@ -363,6 +363,7 @@ export default function Dashboard() {
     const startObj = planStartDate ? new Date(planStartDate) : new Date();
     const diffTime = Math.abs(new Date().getTime() - startObj.getTime());
     const daysSinceStart = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    const totalDays = Math.max(1, planDuration * 30);
     const expectedWeight = startWeight - ((startWeight - goalWeight) * (daysSinceStart / totalDays));
     const diff = weightVal - expectedWeight;
     const absDiff = Math.abs(diff);
@@ -591,6 +592,7 @@ export default function Dashboard() {
   const todayStr = todayObj.toISOString().split('T')[0];
   const yesterdayStr = yesterdayObj.toISOString().split('T')[0];
 
+  // Default to filtered view (last 7 days) unless user is viewing "Today"
   let filteredMeals = loggedMeals;
   if (dateRange === '7days') {
     const sevenDaysAgo = new Date();
@@ -598,10 +600,14 @@ export default function Dashboard() {
     filteredMeals = loggedMeals.filter(m => new Date(m.date) >= sevenDaysAgo);
   }
 
-  // Calculate specific macronutrients
-  const currentCalories = filteredMeals.reduce((acc, m) => acc + (m.calories || 0), 0);
-  const currentProtein = filteredMeals.reduce((acc, m) => acc + (m.protein || 0), 0);
-  const currentFats = filteredMeals.reduce((acc, m) => acc + (m.fat || 0), 0);
+  // If the dashboard is showing "Today", only include meals from today.
+  const todayMeals = loggedMeals.filter(m => new Date(m.date).toISOString().split('T')[0] === todayStr);
+  const effectiveMeals = (setViewMode === "Today") ? todayMeals : filteredMeals;
+
+  // Calculate specific macronutrients (use effectiveMeals so Today's view resets to 0 when empty)
+  const currentCalories = effectiveMeals.reduce((acc, m) => acc + (m.calories || 0), 0);
+  const currentProtein = effectiveMeals.reduce((acc, m) => acc + (m.protein || 0), 0);
+  const currentFats = effectiveMeals.reduce((acc, m) => acc + (m.fat || 0), 0);
 
   const currentPlan = savedPlans.find((p: any) => p.name === activePlan);
   const goal = currentPlan?.goal || "maintenance";
@@ -693,11 +699,19 @@ export default function Dashboard() {
     } else if (
       item.isOnTarget &&
       item.warning &&
-      !item.warning.toLowerCase().includes("on target") &&
-      !item.warning.toLowerCase().includes("no ") &&
-      item.warning.toLowerCase().includes("within safe range")
+      !item.warning.toLowerCase().includes("no sleep") &&
+      !item.warning.toLowerCase().includes("no hydration") &&
+      !item.warning.toLowerCase().includes("no protein") &&
+      !item.warning.toLowerCase().includes("no workout") &&
+      !item.warning.toLowerCase().includes("no calories") &&
+      !item.warning.toLowerCase().includes("no fats") &&
+      (
+        item.warning.toLowerCase().includes("within safe range") ||
+        // Sleep quality warning: non-Excellent quality reduces efficiency
+        (item.key === "sleep" && item.warning.toLowerCase().includes("quality penalty"))
+      )
     ) {
-      // Within buffer → soft warning only
+      // Within buffer or quality-reduced → soft warning only (no pts deducted)
       warningsList.push({
         metric: item.label,
         msg: item.warning,
@@ -740,10 +754,11 @@ export default function Dashboard() {
 
   if (planStartDate) {
     const startObj = new Date(planStartDate);
-    const diffTime = Math.abs(todayObj.getTime() - startObj.getTime());
-    daysSinceStart = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    const now = new Date();
+    // days since plan started (0 if plan hasn't started yet)
+    daysSinceStart = Math.max(0, Math.floor((now.getTime() - startObj.getTime()) / (1000 * 60 * 60 * 24)));
 
-    const lastWeighInDate = getLatestWeightEntryDate() ?? startObj;
+    const lastWeighInDate = getLatestWeightEntryDate();
 
     if (TEST_MODE) {
       const elapsedMs = Date.now() - lastActionTime;
@@ -754,17 +769,37 @@ export default function Dashboard() {
         nextWeighInDays = Math.ceil((3000 - elapsedMs) / 1000);
       }
     } else {
-      const nextWeighInDate = new Date(lastWeighInDate);
-      nextWeighInDate.setDate(nextWeighInDate.getDate() + 7);
+      let nextWeighInDate: Date;
 
-      const now = new Date();
-      const diffMs = nextWeighInDate.getTime() - now.getTime();
-
-      if (diffMs <= 0) {
-        showWeighInForm = true;
+      if (lastWeighInDate) {
+        nextWeighInDate = new Date(lastWeighInDate);
+        // advance to the next future weekly slot
+        while (nextWeighInDate.getTime() <= now.getTime()) {
+          nextWeighInDate.setDate(nextWeighInDate.getDate() + 7);
+        }
       } else {
+        // No weigh-ins yet: prefer the first weekly slot on/after plan start.
+        nextWeighInDate = new Date(startObj);
+        if (nextWeighInDate.getTime() <= now.getTime()) {
+          // schedule next weekly slot from today
+          nextWeighInDate = new Date(now);
+          nextWeighInDate.setDate(nextWeighInDate.getDate() + 7);
+        }
+      }
+
+      // cap next weigh-in to plan end
+      const planEnd = getPlanEndDate();
+      if (nextWeighInDate.getTime() > planEnd.getTime()) {
         showWeighInForm = false;
-        nextWeighInDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+        nextWeighInDays = 0;
+      } else {
+        const diffMs = nextWeighInDate.getTime() - now.getTime();
+        if (diffMs <= 0) {
+          showWeighInForm = true;
+        } else {
+          showWeighInForm = false;
+          nextWeighInDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+        }
       }
     }
   }

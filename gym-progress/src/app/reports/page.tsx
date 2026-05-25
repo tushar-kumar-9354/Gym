@@ -35,11 +35,13 @@ export default function ReportsExport() {
       setLoggedMeals(meals);
     }
 
-    // Load body metrics (plan-independent)
+    // Load body metrics - prefer plan-scoped history and current metrics when active
     if (email) {
-      const mHistory = JSON.parse(localStorage.getItem(`${email}_metricsHistory`) || "[]");
+      const planKey = plan ? `${email}_${plan}_metricsHistory` : null;
+      const mHistory = JSON.parse(localStorage.getItem(planKey || `${email}_metricsHistory`) || "[]");
       setMetricsHistory(mHistory);
-      const mCurrent = JSON.parse(localStorage.getItem(`${email}_metrics`) || "null");
+      const currentKey = plan ? `${email}_${plan}_metrics` : `${email}_metrics`;
+      const mCurrent = JSON.parse(localStorage.getItem(currentKey) || "null");
       setCurrentMetrics(mCurrent);
     }
   }, []);

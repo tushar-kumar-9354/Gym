@@ -33,6 +33,7 @@ export default function YourMetrics() {
   const [measurementUnit, setMeasurementUnit] = useState<MeasurementUnit>("cm");
   const [bodyMetrics, setBodyMetrics] = useState(defaultBodyMetrics);
   const [lastMetricsUpdate, setLastMetricsUpdate] = useState<string | null>(null);
+  const [planStartDate, setPlanStartDate] = useState<string | null>(null);
 
   // Dynamic calculations on render
   const weightNum = parseFloat(weight) || 0;
@@ -115,27 +116,53 @@ export default function YourMetrics() {
     ? Math.floor((Date.now() - new Date(lastMetricsUpdate).getTime()) / (1000 * 60 * 60 * 24))
     : Number.POSITIVE_INFINITY;
 
-  const metricsReminder = !lastMetricsUpdate
-    ? "Monthly metrics are due now. Update your body measurements to keep your progress visible."
-    : daysSinceLastUpdate >= 30
+  const daysSincePlanStart = planStartDate
+    ? Math.floor((Date.now() - new Date(planStartDate).getTime()) / (1000 * 60 * 60 * 24))
+    : Number.POSITIVE_INFINITY;
+
+  let metricsReminder = "No monthly metrics recorded yet.";
+  if (lastMetricsUpdate) {
+    metricsReminder = daysSinceLastUpdate >= 30
       ? "Your monthly body metrics are overdue. Please update them today."
       : daysSinceLastUpdate >= 25
         ? "Your monthly body metrics are due soon."
         : "Monthly body metrics are up to date.";
+  } else if (planStartDate) {
+    if (daysSincePlanStart >= 30) {
+      metricsReminder = "Monthly metrics are due now. Update your body measurements to keep your progress visible.";
+    } else if (daysSincePlanStart >= 25) {
+      metricsReminder = "Your monthly body metrics are due soon.";
+    } else {
+      const daysLeft = 30 - daysSincePlanStart;
+      metricsReminder = `No monthly metrics recorded yet. You'll be prompted in ${daysLeft} day${daysLeft === 1 ? '' : 's'}.`;
+    }
+  }
 
   useEffect(() => {
-    const isOverdue = !lastMetricsUpdate || daysSinceLastUpdate >= 30;
+    // Open modal only if:
+    // - user has previously saved metrics and it's been >= 30 days since last update, OR
+    // - user has no saved metrics but their active plan started >= 30 days ago
+    const hasSavedMetrics = Boolean(lastMetricsUpdate);
+    const metricsExpired = hasSavedMetrics ? daysSinceLastUpdate >= 30 : false;
+    const planOldEnough = !hasSavedMetrics && planStartDate ? daysSincePlanStart >= 30 : false;
+
+    const isOverdue = metricsExpired || planOldEnough;
     if (isOverdue && !hasOpenedModal) {
       setIsModalOpen(true);
       setHasOpenedModal(true);
     }
-  }, [daysSinceLastUpdate, hasOpenedModal, lastMetricsUpdate]);
+  }, [daysSinceLastUpdate, daysSincePlanStart, hasOpenedModal, lastMetricsUpdate, planStartDate]);
 
   useEffect(() => {
     const email = localStorage.getItem("userEmail") || "";
     setUserEmail(email);
 
     if (email) {
+      const activePlanName = localStorage.getItem(`${email}_activePlan`);
+      const plans = JSON.parse(localStorage.getItem(`${email}_plans`) || "[]");
+      const currentPlan = plans.find((p: any) => p.name === activePlanName);
+      setPlanStartDate(currentPlan?.date || null);
+
       const metrics = JSON.parse(localStorage.getItem(`${email}_metrics`) || "{}");
       const savedUnit = metrics.measurementUnit === "in" ? "in" : "cm";
       setMeasurementUnit(savedUnit);
@@ -206,13 +233,18 @@ export default function YourMetrics() {
     };
 
     localStorage.setItem(`${userEmail}_metrics`, JSON.stringify(metrics));
+    // Also save plan-scoped current metrics for isolation per plan
+    const activePlanName = localStorage.getItem(`${userEmail}_activePlan`);
+    if (activePlanName) {
+      localStorage.setItem(`${userEmail}_${activePlanName}_metrics`, JSON.stringify(metrics));
+    }
     // Also save to global keys for backward compatibility/simplicity in plan page
     localStorage.setItem("userWeight", weight);
     localStorage.setItem("userHeight", height);
     setLastMetricsUpdate(metrics.lastUpdated);
 
     // --- Save historical snapshot for month-over-month tracking ---
-    const historyKey = `${userEmail}_metricsHistory`;
+    const historyKey = activePlanName ? `${userEmail}_${activePlanName}_metricsHistory` : `${userEmail}_metricsHistory`;
     const history: any[] = JSON.parse(localStorage.getItem(historyKey) || "[]");
     const snapshot = {
       date: metrics.lastUpdated,
@@ -252,11 +284,15 @@ export default function YourMetrics() {
     };
 
     localStorage.setItem(`${userEmail}_metrics`, JSON.stringify(metrics));
+    const activePlanName = localStorage.getItem(`${userEmail}_activePlan`);
+    if (activePlanName) {
+      localStorage.setItem(`${userEmail}_${activePlanName}_metrics`, JSON.stringify(metrics));
+    }
     localStorage.setItem("userWeight", weight);
     localStorage.setItem("userHeight", height);
     setLastMetricsUpdate(metrics.lastUpdated);
 
-    const historyKey = `${userEmail}_metricsHistory`;
+    const historyKey = activePlanName ? `${userEmail}_${activePlanName}_metricsHistory` : `${userEmail}_metricsHistory`;
     const history: any[] = JSON.parse(localStorage.getItem(historyKey) || "[]");
     const snapshot = {
       date: metrics.lastUpdated,

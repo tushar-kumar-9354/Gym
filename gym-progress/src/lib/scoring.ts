@@ -72,18 +72,39 @@ export function computeAdvancedGoldilocksScores(input: ScoringInputs): AdvancedS
   const hours = parseSleepHours(sleepHours);
 
   // Sleep analysis (buffer: 1h over target = warning only, beyond = penalty)
+  // Quality: Excellent=100%, Good=90%, Fair=75%, Poor=60%
+  const sleepQualityInput = input.sleepQuality;
+  const qualityLabel = (() => {
+    if (!sleepQualityInput || typeof sleepQualityInput !== 'string') return 'Excellent';
+    const q = String(sleepQualityInput).toLowerCase();
+    if (q.startsWith('ex')) return 'Excellent';
+    if (q.startsWith('good')) return 'Good';
+    if (q.startsWith('fair')) return 'Fair';
+    if (q.startsWith('poor') || q.startsWith('bad')) return 'Poor';
+    return 'Excellent';
+  })();
+  const qualityPct = { Excellent: 100, Good: 90, Fair: 75, Poor: 60 }[qualityLabel] ?? 100;
+
   const sleepDelta = hours - sleepTarget;
   const sleepPenalty = Math.max(0, Math.round((30 - result.sleepPoints) * 10) / 10);
   const sleepInBuffer = sleepDelta > 0 && sleepDelta <= 1;
-  const sleepWarning = hours > 0
+
+  // Build a rich warning that covers BOTH duration and quality
+  const durationMsg = hours > 0
     ? sleepDelta > 0
       ? sleepInBuffer
-        ? `Sleep is ${sleepDelta.toFixed(1)}h above target (within safe range)`
-        : `Sleep is ${sleepDelta.toFixed(1)}h above your target`
+        ? `${hours.toFixed(1)}h slept (+${sleepDelta.toFixed(1)}h over target, within safe range)`
+        : `${hours.toFixed(1)}h slept (${sleepDelta.toFixed(1)}h over target)`
       : sleepDelta < 0
-        ? `Sleep is ${Math.abs(sleepDelta).toFixed(1)}h below your target`
-        : "Sleep is on target"
-    : "No sleep logged yet";
+        ? `${hours.toFixed(1)}h slept (${Math.abs(sleepDelta).toFixed(1)}h below target)`
+        : `${hours.toFixed(1)}h slept (on target)`
+    : 'No sleep logged yet';
+  const qualityMsg = hours > 0
+    ? qualityLabel === 'Excellent'
+      ? `${qualityLabel} quality (${qualityPct}% efficiency)`
+      : `${qualityLabel} quality (${qualityPct}% efficiency — ${100 - qualityPct}% quality penalty)`
+    : '';
+  const sleepWarning = qualityMsg ? `${durationMsg} · ${qualityMsg}` : durationMsg;
 
   // Calories analysis
   const caloriesDelta = diet.calories - targetCalories;
@@ -157,6 +178,12 @@ export function computeAdvancedGoldilocksScores(input: ScoringInputs): AdvancedS
         : "Fats are on target"
     : "No fats logged yet";
 
+  // Sleep is "perfect" only when duration is on target AND quality is Excellent.
+  // Quality < Excellent always reduces points (quality penalty) — show as Warning if in buffer.
+  const hasQualityReduction = qualityPct < 100;
+  const sleepIsInWarning = (sleepInBuffer || sleepPenalty === 0) && hasQualityReduction && hours > 0;
+  const sleepIsPerfect = sleepPenalty === 0 && !hasQualityReduction && hours > 0;
+
   const analysis: MetricAnalysis[] = [
     {
       label: "Sleep",
@@ -167,9 +194,12 @@ export function computeAdvancedGoldilocksScores(input: ScoringInputs): AdvancedS
       points: result.sleepPoints,
       maxPoints: 30,
       score: result.sleepScore,
-      penalty: sleepInBuffer ? 0 : sleepPenalty,
+      // If quality reduces points but duration is fine → show as soft warning (0 penalty shown)
+      // If duration is also off → show actual penalty
+      penalty: sleepIsPerfect || sleepIsInWarning ? 0 : sleepPenalty,
       warning: sleepWarning,
-      isOnTarget: sleepPenalty === 0 || sleepInBuffer,
+      // isOnTarget true only for Perfect or Warning-only (within buffer / quality reduced only)
+      isOnTarget: sleepIsPerfect || sleepIsInWarning || sleepInBuffer,
     },
     {
       label: "Calories",
@@ -262,44 +292,48 @@ export function computeGoldilocksScores(input: ScoringInputs): ScoringResult {
     return isNaN(num) ? 0 : num;
   };
 
-  // Sleep (30 points total): consider both hours and quality weight
+  // Sleep (30 points total): combined Duration × Quality formula
+  // Quality multipliers: Excellent=100%, Good=90%, Fair=75%, Poor=60%
   const hours = parseSleepHours(sleepHours);
-  // Map quality to factor (default 1)
   const qualityFactor = (() => {
-    if (typeof sleepQuality === 'number') return Math.min(1, Math.max(0, sleepQuality / 100));
+    if (typeof sleepQuality === 'number') return Math.min(1, Math.max(0.6, sleepQuality / 100));
     if (!sleepQuality || typeof sleepQuality !== 'string') return 1;
     const q = String(sleepQuality).toLowerCase();
-    if (q.startsWith('ex')) return 1.0; // excellent
-    if (q.startsWith('good')) return 0.8;
-    if (q.startsWith('fair')) return 0.7;
-    if (q.startsWith('poor') || q.startsWith('bad')) return 0.5;
-    return 1.0;
+    if (q.startsWith('ex')) return 1.00;   // Excellent → 100%
+    if (q.startsWith('good')) return 0.90; // Good     →  90%
+    if (q.startsWith('fair')) return 0.75; // Fair     →  75%
+    if (q.startsWith('poor') || q.startsWith('bad')) return 0.60; // Poor → 60%
+    return 1.00;
   })();
 
   let sleepPoints = 0;
   let sleepScore = 0;
   if (!sleepLogged || hours === 0) {
-    // Not logged or zero hours => keep at 0
     sleepPoints = 0;
     sleepScore = 0;
   } else {
-    // Use the user-specific sleep target as the center of the Goldilocks zone,
-    // and penalize both under-sleep and over-sleep symmetrically,
-    // with a 1.0 hour over-sleep buffer (warning only, no penalty).
+    // Duration score: how close to target sleep hours (Goldilocks zone)
+    // +1h over target = buffer (warning only). Beyond that = penalty.
     const targetHours = Math.max(4, sleepTarget || 8);
-    let durationPercent = 100;
+    let durationScore = 100; // 0–100%
     if (hours < targetHours) {
-      durationPercent = Math.max(0, 100 - ((targetHours - hours) / targetHours) * 100);
+      // Under target: linear penalty. Missing 1h on an 8h target = -12.5%
+      durationScore = Math.max(0, 100 - ((targetHours - hours) / targetHours) * 100);
     } else if (hours > targetHours) {
       if (hours <= targetHours + 1) {
-        durationPercent = 100;
+        // Within 1h buffer → no duration penalty
+        durationScore = 100;
       } else {
-        durationPercent = Math.max(0, 100 - (((hours - targetHours - 1)) / targetHours) * 100);
+        // Beyond buffer: same linear penalty rate
+        durationScore = Math.max(0, 100 - (((hours - targetHours - 1)) / targetHours) * 100);
       }
     }
-    const rawScore = durationPercent * qualityFactor; // 0-100 scaled by quality
-    sleepScore = Math.round(rawScore * 10) / 10; // keep one decimal percent
-    // Convert percent to points out of 30 for the existing points system
+
+    // Combined score: Duration × Quality multiplier
+    // e.g. 8h target + 8h slept + Good quality = 100% × 0.90 = 90 pts
+    // e.g. 6h slept on 8h target + Poor quality = 75% × 0.60 = 45 pts
+    const rawScore = durationScore * qualityFactor;
+    sleepScore = Math.round(rawScore * 10) / 10;
     sleepPoints = Math.round((sleepScore / 100) * 30 * 10) / 10;
   }
 
