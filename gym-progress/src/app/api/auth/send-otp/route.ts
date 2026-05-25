@@ -24,16 +24,29 @@ export async function POST(request: Request) {
       console.log(`[AUTH] Attempting to send SMTP OTP to ${email}...`);
 
       try {
+        const smtpService = process.env.SMTP_SERVICE || "gmail";
+        const smtpUser = process.env.SMTP_USER;
+        const smtpPass = process.env.SMTP_PASS;
+
+        // If SMTP credentials are not configured, fall back to logging the OTP (development-safe)
+        if (!smtpUser || !smtpPass) {
+          console.warn(`[SMTP CONFIG] SMTP credentials not set. OTP for ${email}: ${generatedOtp}`);
+          return NextResponse.json({
+            success: true,
+            message: "SMTP not configured: OTP logged on server (development fallback).",
+          });
+        }
+
         const transporter = nodemailer.createTransport({
-          service: "gmail",
+          service: smtpService,
           auth: {
-            user: "jangratushar348@gmail.com",
-            pass: "wawnhiohugspvzrp", // Google App Password provided by user
+            user: smtpUser,
+            pass: smtpPass,
           },
         });
 
         const mailOptions = {
-          from: `"GymProgress+ Admin" <jangratushar348@gmail.com>`,
+          from: `"GymProgress+ Admin" <${smtpUser}>`,
           to: email,
           subject: "Your GymProgress+ Security OTP",
           html: `
@@ -56,20 +69,17 @@ export async function POST(request: Request) {
 
         await transporter.sendMail(mailOptions);
         console.log(`[SMTP SUCCESS] OTP successfully sent to ${email}`);
-        
-        return NextResponse.json({ 
-          success: true, 
-          message: "OTP has been sent to your email address." 
-        });
 
-// @ts-ignore
+        return NextResponse.json({
+          success: true,
+          message: "OTP has been sent to your email address.",
+        });
       } catch (smtpError: any) {
         console.error("[SMTP ERROR] Failed to send email via nodemailer:", smtpError);
-        // Fallback to console log in development/sandbox so it doesn't break user flow
         console.log(`\n========================================\n[DEV FALLBACK] Email OTP for ${email} is: ${generatedOtp}\n========================================\n`);
-        return NextResponse.json({ 
-          success: true, 
-          message: "SMTP failed. OTP was logged in the server console (Development fallback)." 
+        return NextResponse.json({
+          success: true,
+          message: "SMTP failed. OTP was logged in the server console (fallback).",
         });
       }
     }
