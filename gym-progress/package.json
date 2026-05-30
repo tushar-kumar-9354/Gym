@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "verify-env": "node ./scripts/verify-env.js",
+    "build": "npm run verify-env && next build",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run"
