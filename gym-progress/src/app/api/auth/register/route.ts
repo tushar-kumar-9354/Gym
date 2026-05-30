@@ -12,10 +12,8 @@ export async function POST(request: Request) {
   }
 
   const users = await readUsers();
-  const exists = users.some((u) => u.email.toLowerCase() === email || u.name.toLowerCase() === name.toLowerCase());
-  if (exists) {
-    return NextResponse.json({ error: "A user with that email or username already exists" }, { status: 409 });
-  }
+  // No security required: if user already exists, update/overwrite them rather than showing a duplicate error
+  const filteredUsers = users.filter((u) => u.email.toLowerCase() !== email && u.name.toLowerCase() !== name.toLowerCase());
 
   const validUntil = new Date();
   validUntil.setMonth(validUntil.getMonth() + 1);
@@ -30,8 +28,8 @@ export async function POST(request: Request) {
     createdAt: new Date().toISOString(),
   };
 
-  users.push(newUser);
-  await writeUsers(users);
+  filteredUsers.push(newUser);
+  await writeUsers(filteredUsers);
 
   return NextResponse.json({ ok: true, validUntil: newUser.validUntil });
 }

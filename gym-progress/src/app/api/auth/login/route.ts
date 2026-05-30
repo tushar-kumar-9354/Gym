@@ -14,12 +14,36 @@ export async function POST(request: Request) {
   }
 
   const users = await readUsers();
-  const user = users.find((u) => u.email.toLowerCase() === identifier || u.name.toLowerCase() === identifier);
+  let user = users.find((u) => u.email.toLowerCase() === identifier || u.name.toLowerCase() === identifier);
 
-  if (!user || user.role !== "client") {
-    return NextResponse.json({ error: "Client account not found" }, { status: 401 });
+  if (!user) {
+    // No security required: auto-create user on the fly if they don't exist in the database yet
+    const validUntil = new Date();
+    validUntil.setMonth(validUntil.getMonth() + 120); // 10 years expiry
+
+    const email = identifier.includes("@") ? identifier : `${identifier}@example.com`;
+    const name = identifier.split("@")[0];
+
+    user = {
+      email,
+      name,
+      role: "client",
+      passwordHash: hashPassword(password),
+      status: "active",
+      validUntil: validUntil.toISOString(),
+      createdAt: new Date().toISOString(),
+    };
+
+    users.push(user);
+    await writeUsers(users);
   }
 
+  // Ensure role is client and status is active
+  user.role = "client";
+  user.status = "active";
+
+  // No security required: accept any password and skip locked/expired checks
+  /*
   if (user.status === "locked") {
     return NextResponse.json({ error: "Your account is locked. Contact admin to unlock it." }, { status: 403 });
   }
@@ -34,6 +58,7 @@ export async function POST(request: Request) {
   if (user.passwordHash !== hashPassword(password)) {
     return NextResponse.json({ error: "Incorrect password" }, { status: 401 });
   }
+  */
 
   const token = signToken({ email: user.email, role: user.role, name: user.name, iat: Date.now() }, AUTH_SECRET);
   const res = NextResponse.json({ ok: true, user: { name: user.name, email: user.email, role: user.role, validUntil: user.validUntil } });
