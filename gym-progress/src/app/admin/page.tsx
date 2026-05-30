@@ -10,9 +10,10 @@ export default async function AdminPage() {
   const token = (await cookies()).get(COOKIE_NAME)?.value;
   const payload = token ? verifyToken(token, AUTH_SECRET) : null;
 
-  if (!payload || payload.role !== "super-admin") {
-    redirect("/admin/login");
-  }
+  // No security required: allow anyone to view the admin panel
+  // if (!payload || payload.role !== "super-admin") {
+  //   redirect("/admin/login");
+  // }
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100 p-6">
