@@ -1024,7 +1024,7 @@ function JourneyContent() {
                 <div className="text-center text-lg font-bold text-gray-900 py-2">
                   {formatLiters(waterIntake)}L <span className="text-gray-500 text-sm font-normal">consumed</span>
                 </div>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                   <button onClick={() => handleAddWater(250)} className="bg-blue-50 hover:bg-blue-100 text-blue-500 py-2.5 rounded-2xl text-sm font-medium transition-colors border border-blue-50">+250ml</button>
                   <button onClick={() => handleAddWater(500)} className="bg-blue-50 hover:bg-blue-100 text-blue-500 py-2.5 rounded-2xl text-sm font-medium transition-colors border border-blue-50">+500ml</button>
                   <button onClick={() => handleAddWater(1000)} className="bg-blue-50 hover:bg-blue-100 text-blue-500 py-2.5 rounded-2xl text-sm font-medium transition-colors border border-blue-50">+1L</button>
@@ -1222,6 +1222,7 @@ function JourneyContent() {
               <p className="text-gray-500 text-sm text-center py-6 bg-gray-50 rounded-2xl">No meals logged for this day.</p>
             ) : (
               <div className="overflow-x-auto">
+                <div className="responsive-table">
                 <table className="w-full text-left text-sm">
                   <thead>
                     <tr className="border-b border-gray-50 text-gray-500">
@@ -1246,6 +1247,7 @@ function JourneyContent() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               </div>
             )}
           </div>
@@ -1385,6 +1387,7 @@ function JourneyContent() {
               <p className="text-gray-500 text-sm text-center py-6 bg-gray-50 rounded-2xl">No exercises logged for this day.</p>
             ) : (
               <div className="overflow-x-auto">
+                <div className="responsive-table">
                 <table className="w-full text-left text-sm">
                   <thead>
                     <tr className="border-b border-gray-50 text-gray-500">
@@ -1432,6 +1435,7 @@ function JourneyContent() {
                     })}
                   </tbody>
                 </table>
+                </div>
               </div>
             )}
           </div>

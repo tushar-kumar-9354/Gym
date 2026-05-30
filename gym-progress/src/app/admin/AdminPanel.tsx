@@ -193,6 +193,7 @@ export default function AdminPanel() {
 
       <section className="overflow-hidden rounded-3xl border border-slate-800 bg-slate-950/80 shadow-lg shadow-slate-950/20">
         <div className="overflow-x-auto">
+          <div className="responsive-table">
           <table className="min-w-full border-collapse text-left text-sm text-slate-200">
             <thead className="bg-slate-900/90 text-slate-400">
               <tr>
@@ -236,6 +237,7 @@ export default function AdminPanel() {
               )}
             </tbody>
           </table>
+          </div>
         </div>
       </section>
 

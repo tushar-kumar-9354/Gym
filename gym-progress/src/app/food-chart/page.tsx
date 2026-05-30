@@ -198,6 +198,7 @@ export default function FoodChart() {
         </form>
 
         <div className="overflow-x-auto">
+          <div className="responsive-table">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-gray-200 text-gray-500 text-sm">
@@ -237,6 +238,7 @@ export default function FoodChart() {
               )}
             </tbody>
           </table>
+          </div>
         </div>
       </div>
     </div>

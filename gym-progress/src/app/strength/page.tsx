@@ -619,7 +619,9 @@ export default function StrengthTracker() {
             
             {exerciseLogs.length > 0 ? (
               <div className="bg-surface p-4 border border-border rounded-xl">
-                <StrengthChart dates={displayChartDates} oneRMs={chartValues} exerciseName={exercise} />
+                <div className="responsive-chart">
+                  <StrengthChart dates={displayChartDates} oneRMs={chartValues} exerciseName={exercise} />
+                </div>
               </div>
             ) : (
               <div className="h-64 flex flex-col items-center justify-center border border-dashed border-border rounded-xl bg-slate-50">
@@ -652,6 +654,7 @@ export default function StrengthTracker() {
             ) : (
               <div className="space-y-4">
                 <div className="overflow-x-auto">
+                  <div className="responsive-table">
                   <table className="w-full text-left border-collapse">
                     <thead>
                       <tr className="border-b border-border text-slate-500 text-[11px] font-bold uppercase tracking-wider">
@@ -676,6 +679,7 @@ export default function StrengthTracker() {
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 </div>
 
                 <div className="border-t border-border pt-4">
@@ -715,6 +719,7 @@ export default function StrengthTracker() {
               <button onClick={() => { setSelectedMonth(null); setSelectedDateFilter(null); }} className="text-xs text-slate-500 hover:text-slate-900 ml-2">Clear</button>
             </div>
               <div className="overflow-x-auto">
+                <div className="responsive-table">
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="border-b border-border text-slate-500 text-xs font-bold uppercase tracking-wider">
@@ -766,6 +771,7 @@ export default function StrengthTracker() {
                     </tbody>
                   )}
                 </table>
+                </div>
               </div>
           </section>
         </div>

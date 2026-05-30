@@ -500,7 +500,7 @@ export default function DailyRoutine() {
               <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
                 <Info size={18} className="text-blue-500" /> Plan Target Summary
               </h3>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
                 <div className="bg-gray-50 p-3 rounded-2xl border border-gray-100 text-center">
                   <span className="text-xs text-gray-500 block">Weight Target</span>
                   <span className="font-bold text-gray-900 text-sm block mt-1">{startWeight}kg → {goalWeight}kg</span>

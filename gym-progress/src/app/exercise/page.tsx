@@ -359,7 +359,9 @@ function ExerciseContent() {
               </div>
               <div className="h-64">
                 {dates.length > 0 ? (
-                  <StrengthChart dates={dates} oneRMs={oneRMs} exerciseName={exercise} />
+                  <div className="responsive-chart">
+                    <StrengthChart dates={dates} oneRMs={oneRMs} exerciseName={exercise} />
+                  </div>
                 ) : (
                   <p className="text-gray-500 text-center py-20">No logs for this exercise yet. Add a set to see your 1RM progression!</p>
                 )}

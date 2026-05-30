@@ -805,7 +805,7 @@ export default function Visualise() {
 
                 {/* Change Summary Cards */}
                 {values.length >= 2 && (
-                  <div className="grid grid-cols-3 gap-3 mb-5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mb-5">
                     <div className="bg-gray-50 p-3 rounded-xl text-center">
                       <p className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">First Record</p>
                       <p className="text-lg font-bold text-gray-900 mt-1">{firstVal} {chartUnit}</p>

@@ -1914,7 +1914,7 @@ export default function Dashboard() {
                             );
                           })}
                       </div>
-                      <div className="mt-4 pt-3 border-t border-gray-200 grid grid-cols-3 gap-2 text-center">
+                      <div className="mt-4 pt-3 border-t border-gray-200 grid grid-cols-1 sm:grid-cols-3 gap-2 text-center">
                         <div>
                           <p className="text-xs text-gray-500">Sets</p>
                           <p className="font-semibold text-gray-900">{totalSets}</p>
@@ -1961,7 +1961,9 @@ export default function Dashboard() {
             <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-50">
               <h3 className="text-lg font-semibold text-blue-500 mb-4">Goal Trajectory (Weight)</h3>
               <div className="h-64">
-                <GoalChart dates={chartDates} actualData={actualWeight} targetData={targetWeight} label="Weight" />
+                <div className="responsive-chart">
+                  <GoalChart dates={chartDates} actualData={actualWeight} targetData={targetWeight} label="Weight" />
+                </div>
               </div>
             </div>
 
@@ -1972,7 +1974,9 @@ export default function Dashboard() {
               </div>
               <div className="h-64">
                 {dates.length > 0 ? (
-                  <StrengthChart dates={dates} oneRMs={oneRMs} exerciseName={selectedExercise} />
+                  <div className="responsive-chart">
+                    <StrengthChart dates={dates} oneRMs={oneRMs} exerciseName={selectedExercise} />
+                  </div>
                 ) : (
                   <div className="h-full flex flex-col items-center justify-center text-gray-400">
                     <TrendingUp size={32} className="mb-2 opacity-50" />

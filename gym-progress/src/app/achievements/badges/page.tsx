@@ -242,7 +242,7 @@ export default function BadgesPage() {
         </div>
 
         <div className="bg-white p-4 rounded-2xl shadow-sm">
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             {filtered.map((b) => {
               const Icon = b.icon;
               const cols = colorFor(b.tier || 'bronze');

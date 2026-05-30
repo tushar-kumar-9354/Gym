@@ -98,6 +98,7 @@ export default function LeaderboardPage() {
           {loading ? (
             <div className="py-12 text-center text-gray-500">Loading leaderboard…</div>
           ) : (
+            <div className="responsive-table">
             <table className="w-full text-left">
               <thead>
                 <tr className="text-xs uppercase text-gray-500">
@@ -141,6 +142,7 @@ export default function LeaderboardPage() {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </div>
       </div>

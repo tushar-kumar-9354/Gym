@@ -350,7 +350,7 @@ export default function CompletedPlan() {
             You successfully completed your {planData.duration}-month target schedule for <strong className="text-blue-600 font-bold">"{planData.name}"</strong>. Hitting consecutive daily targets is tough, but you fought and completed the distance!
           </p>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-10 max-w-4xl mx-auto">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-10 max-w-4xl mx-auto">
             <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-xs">
               <Weight size={20} className="text-blue-500 mx-auto mb-2" />
               <span className="text-[11px] text-gray-500 uppercase tracking-wider block font-semibold">Start Weight</span>
