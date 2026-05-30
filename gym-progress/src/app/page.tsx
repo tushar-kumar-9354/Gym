@@ -478,6 +478,19 @@ export default function Dashboard() {
     persistWeeklyWeights(updatedWeights);
     setAutoOpenWeighIn(false);
 
+    // Reset next weigh-in to exactly 7 days from now after a successful log
+    if (userEmail && activePlan) {
+      try {
+        const next = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+        localStorage.setItem(`${userEmail}_${activePlan}_nextWeighIn`, next.toISOString());
+        localStorage.setItem(`${userEmail}_${activePlan}_daysRemaining`, '7');
+        window.dispatchEvent(new Event('gym-plan-updated'));
+        setLastActionTime(Date.now());
+      } catch (err) {
+        // ignore storage errors
+      }
+    }
+
     // Calculate expected weight today to evaluate recommendation
     const startObj = planStartDate ? new Date(planStartDate) : new Date();
     const diffTime = Math.abs(new Date().getTime() - startObj.getTime());

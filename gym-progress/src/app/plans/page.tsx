@@ -129,12 +129,14 @@ export default function Plans() {
     // If this was a new plan creation, initialize weekly weights and next weigh-in BEFORE notifying other pages
     if (!editingPlan) {
       try {
-        const firstDateIso = planData.startDate ? new Date(planData.startDate).toISOString() : new Date().toISOString();
-        const weekly = [{ weight: parsedWeight, date: firstDateIso }];
+        // Use current timestamp for the initial weekly weight entry to avoid
+        // timezone/date-only parsing differences. Schedule next weigh-in as
+        // exactly 7 days from now so the countdown starts at a full 7 days.
+        const nowIso = new Date().toISOString();
+        const weekly = [{ weight: parsedWeight, date: nowIso }];
         localStorage.setItem(`${userEmail}_${name}_weeklyWeights`, JSON.stringify(weekly));
-        // schedule next weigh-in 7 days after start
-        const next = new Date(firstDateIso);
-        next.setDate(next.getDate() + 7);
+        // schedule next weigh-in exactly 7 days from now
+        const next = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
         localStorage.setItem(`${userEmail}_${name}_nextWeighIn`, next.toISOString());
         // also set a simple days remaining counter (for legacy usages)
         localStorage.setItem(`${userEmail}_${name}_daysRemaining`, '7');
