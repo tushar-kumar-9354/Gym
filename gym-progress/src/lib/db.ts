@@ -44,6 +44,21 @@ class JsonFallbackDatabase {
       } else {
         this.save();
       }
+      // If no users recorded yet, try seeding from a checked-in serverUsers.json
+      try {
+        const seedPath = path.join(process.cwd(), 'data', 'serverUsers.json');
+        if (this.data && Array.isArray(this.data.users) && this.data.users.length === 0 && fs.existsSync(seedPath)) {
+          const seedContent = fs.readFileSync(seedPath, 'utf8');
+          const seeded = JSON.parse(seedContent);
+          if (Array.isArray(seeded) && seeded.length > 0) {
+            this.data.users = seeded.map((u: any) => ({ ...u }));
+            this.save();
+            console.log("Seeded JSON fallback DB from data/serverUsers.json");
+          }
+        }
+      } catch (seedErr) {
+        // non-fatal
+      }
     } catch (e) {
       console.warn("Failed to load JSON database from path, using in-memory only:", e);
     }
@@ -92,6 +107,17 @@ class JsonFallbackDatabase {
             ...u,
             updatedAt: u.updatedAt || null
           }));
+        },
+        run: () => { throw new Error("Run not supported on SELECT"); }
+      };
+    }
+
+    // SELECT email FROM users
+    if (normalizedSql.match(/^SELECT email FROM users$/i)) {
+      return {
+        all: () => {
+          this.load();
+          return this.data.users.map(u => ({ email: u.email }));
         },
         run: () => { throw new Error("Run not supported on SELECT"); }
       };

@@ -32,11 +32,35 @@ export default function TopNav() {
   }, []);
 
   const handleLogout = () => {
-    localStorage.removeItem("isLoggedIn");
-    localStorage.removeItem("userName");
-    localStorage.removeItem("userEmail");
-    setIsLoggedIn(false);
-    window.location.href = "/login";
+    (async () => {
+      try {
+        const email = localStorage.getItem("userEmail");
+        if (email) {
+          const updates: { [k: string]: string } = {};
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key) {
+              const v = localStorage.getItem(key);
+              if (v !== null) updates[key] = v;
+            }
+          }
+
+          await fetch('/api/sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, updates, removals: [] })
+          });
+        }
+      } catch (err) {
+        // don't block logout on sync failure
+      } finally {
+        localStorage.removeItem("isLoggedIn");
+        localStorage.removeItem("userName");
+        localStorage.removeItem("userEmail");
+        setIsLoggedIn(false);
+        window.location.href = "/login";
+      }
+    })();
   };
 
   if (pathname === "/login") return null;
