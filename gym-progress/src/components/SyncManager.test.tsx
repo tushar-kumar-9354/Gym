@@ -1,17 +1,11 @@
 import { render, waitFor } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import SyncManager from './SyncManager';
 
 describe('SyncManager DOM Tests', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.useFakeTimers();
     localStorage.clear();
-  });
-
-  afterEach(() => {
-    vi.runOnlyPendingTimers();
-    vi.useRealTimers();
   });
 
   it('fetches remote data on mount if userEmail exists in localStorage', async () => {
@@ -28,24 +22,26 @@ describe('SyncManager DOM Tests', () => {
     // Ensure it fetched the remote data
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith('/api/sync?email=test%40sync.com');
-    });
+    }, { timeout: 3000 });
 
     // Wait for the promise resolution
     await waitFor(() => {
       expect(localStorage.getItem('test_plan')).toBe('{"name":"Bulk"}');
-    });
+    }, { timeout: 3000 });
   });
 
   it('intercepts localStorage.setItem and debounces a POST to /api/sync', async () => {
     localStorage.setItem('userEmail', 'test@sync.com');
-    global.fetch = vi.fn().mockResolvedValue({ json: () => Promise.resolve({ ok: true, data: {} }) });
+    global.fetch = vi.fn().mockResolvedValue({
+      json: () => Promise.resolve({ ok: true, data: {} })
+    });
     
     render(<SyncManager />);
 
     // Wait for the initial sync fetch to complete so isSyncingFromServer is reset to false
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith('/api/sync?email=test%40sync.com');
-    });
+    }, { timeout: 3000 });
 
     // Clear call history to isolate the debounce POST assertion
     (global.fetch as any).mockClear();
@@ -53,8 +49,8 @@ describe('SyncManager DOM Tests', () => {
     // Trigger an intercepted setItem
     localStorage.setItem('new_log', '100kg');
 
-    // Fast-forward debounce timeout (1000ms)
-    vi.advanceTimersByTime(1100);
+    // Wait 1.1 seconds for real-time debounce timeout
+    await new Promise((resolve) => setTimeout(resolve, 1100));
 
     // Verify it sent the payload
     await waitFor(() => {
@@ -66,6 +62,6 @@ describe('SyncManager DOM Tests', () => {
           removals: []
         })
       }));
-    });
+    }, { timeout: 3000 });
   });
 });

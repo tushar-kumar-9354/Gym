@@ -11,26 +11,11 @@ vi.mock('next/navigation', () => ({
   }),
 }));
 
-// Mock localStorage
-const localStorageMock = (function () {
-  let store: Record<string, string> = {};
-  return {
-    getItem: vi.fn((key: string) => store[key] || null),
-    setItem: vi.fn((key: string, value: string) => {
-      store[key] = value.toString();
-    }),
-    removeItem: vi.fn((key: string) => {
-      delete store[key];
-    }),
-    clear: vi.fn(() => {
-      store = {};
-    }),
-  };
-})();
-
-Object.defineProperty(window, 'localStorage', {
-  value: localStorageMock,
-});
+// Spy on standard Storage prototype methods to preserve JSDOM standard localStorage functionality and prototype inheritance
+vi.spyOn(Storage.prototype, 'getItem');
+vi.spyOn(Storage.prototype, 'setItem');
+vi.spyOn(Storage.prototype, 'removeItem');
+vi.spyOn(Storage.prototype, 'clear');
 
 // Mock fetch
 global.fetch = vi.fn(() =>

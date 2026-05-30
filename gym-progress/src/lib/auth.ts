@@ -18,17 +18,35 @@ export async function readUsers(): Promise<AppUser[]> {
 }
 
 export async function writeUsers(users: AppUser[]): Promise<void> {
-  const deleteStmt = db.prepare('DELETE FROM users');
-  const insertStmt = db.prepare(`
+  const emailsToKeep = users.map(u => u.email.toLowerCase().trim());
+  
+  // Prepare upsert statement
+  const upsertStmt = db.prepare(`
     INSERT INTO users (email, name, role, passwordHash, status, validUntil, createdAt, updatedAt)
     VALUES (@email, @name, @role, @passwordHash, @status, @validUntil, @createdAt, @updatedAt)
+    ON CONFLICT(email) DO UPDATE SET
+      name=excluded.name,
+      role=excluded.role,
+      passwordHash=excluded.passwordHash,
+      status=excluded.status,
+      validUntil=excluded.validUntil,
+      updatedAt=excluded.updatedAt
   `);
 
   const transaction = db.transaction((usersToInsert: AppUser[]) => {
-    deleteStmt.run();
+    // 1. Fetch current database users to identify whom to delete (if any have been removed by admin)
+    const allUsers = db.prepare('SELECT email FROM users').all() as { email: string }[];
+    for (const dbUser of allUsers) {
+      if (!emailsToKeep.includes(dbUser.email.toLowerCase().trim())) {
+        db.prepare('DELETE FROM users WHERE email = ?').run(dbUser.email);
+      }
+    }
+
+    // 2. Upsert list to update or insert users without cascading deletes
     for (const user of usersToInsert) {
-      insertStmt.run({
+      upsertStmt.run({
         ...user,
+        email: user.email.toLowerCase().trim(),
         updatedAt: user.updatedAt || null
       });
     }

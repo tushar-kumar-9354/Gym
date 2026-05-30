@@ -97,14 +97,30 @@ class JsonFallbackDatabase {
       };
     }
 
-    // 2. DELETE FROM users
-    if (normalizedSql.match(/^DELETE FROM users$/i)) {
+    // 2. DELETE FROM users [WHERE email = ?]
+    if (normalizedSql.match(/^DELETE FROM users/i)) {
+      if (normalizedSql.match(/WHERE email = \?/i)) {
+        return {
+          all: () => { throw new Error("All not supported on DELETE"); },
+          run: (email: string) => {
+            this.load();
+            const targetEmail = (email || '').toLowerCase().trim();
+            const countBefore = this.data.users.length;
+            this.data.users = this.data.users.filter(u => u.email.toLowerCase() !== targetEmail);
+            // Cascade delete sync data
+            this.data.sync_data = this.data.sync_data.filter(row => row.email.toLowerCase() !== targetEmail);
+            this.save();
+            return { changes: countBefore - this.data.users.length };
+          }
+        };
+      }
       return {
         all: () => { throw new Error("All not supported on DELETE"); },
         run: () => {
           this.load();
           const count = this.data.users.length;
           this.data.users = [];
+          this.data.sync_data = [];
           this.save();
           return { changes: count };
         }
