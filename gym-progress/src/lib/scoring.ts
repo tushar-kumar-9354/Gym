@@ -76,6 +76,14 @@ export function computeAdvancedGoldilocksScores(input: ScoringInputs): AdvancedS
   // If nothing is logged at all, return zeroed scores so UI shows empty bars.
   const allZero = hours === 0 && diet.calories === 0 && diet.protein === 0 && setsLogged === 0 && waterIntake === 0 && diet.fat === 0;
   if (allZero) {
+    const analysis: MetricAnalysis[] = [
+      { label: "Sleep", key: "sleep", logged: 0, target: sleepTarget, unit: "h", points: 0, maxPoints: 30, score: 0, penalty: 0, warning: "No data", isOnTarget: false },
+      { label: "Calories", key: "calories", logged: 0, target: targetCalories, unit: "kcal", points: 0, maxPoints: 25, score: 0, penalty: 0, warning: "No data", isOnTarget: false },
+      { label: "Protein", key: "protein", logged: 0, target: targetProtein, unit: "g", points: 0, maxPoints: 15, score: 0, penalty: 0, warning: "No data", isOnTarget: false },
+      { label: "Workout", key: "workout", logged: 0, target: 10, unit: "sets", points: 0, maxPoints: 12, score: 0, penalty: 0, warning: "No data", isOnTarget: false },
+      { label: "Hydration", key: "hydration", logged: 0, target: targetHydration, unit: "ml", points: 0, maxPoints: 10, score: 0, penalty: 0, warning: "No data", isOnTarget: false },
+      { label: "Fats", key: "fats", logged: 0, target: targetFats, unit: "g", points: 0, maxPoints: 8, score: 0, penalty: 0, warning: "No data", isOnTarget: false },
+    ];
     return {
       sleepPoints: 0,
       calPoints: 0,
@@ -90,7 +98,8 @@ export function computeAdvancedGoldilocksScores(input: ScoringInputs): AdvancedS
       waterScore: 0,
       fatScore: 0,
       overallScore: 0,
-    };
+      analysis,
+    } as AdvancedScoringResult;
   }
 
   // Sleep analysis (buffer: 1h over target = warning only, beyond = penalty)
