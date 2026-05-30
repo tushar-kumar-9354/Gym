@@ -26,6 +26,8 @@ function JourneyContent() {
   const [userEmail, setUserEmail] = useState("");
   const [activePlan, setActivePlan] = useState<string | null>(null);
   const [showConfirmComplete, setShowConfirmComplete] = useState(false);
+  const [nextWeighIn, setNextWeighIn] = useState<string | null>(null);
+  const [weighInCountdown, setWeighInCountdown] = useState<string>("");
   
   // Diet States
   const [loggedMeals, setLoggedMeals] = useState<any[]>([]);
@@ -104,7 +106,38 @@ function JourneyContent() {
     setActivePlan(plan);
 
     const plans = JSON.parse(localStorage.getItem(`${email}_plans`) || "[]");
-    const currentPlan = plans.find((p: any) => p.name === plan);
+    let plansModified = false;
+    const sanitizedPlans = plans.map((p: any) => {
+      let itemModified = false;
+      let w = p.weight;
+      let gw = p.goalWeight;
+      let h = p.height;
+
+      if (typeof w !== 'number' || isNaN(w) || w <= 0) {
+        w = 80;
+        itemModified = true;
+      }
+      if (typeof gw !== 'number' || isNaN(gw) || gw <= 0) {
+        gw = 75;
+        itemModified = true;
+      }
+      if (typeof h !== 'number' || isNaN(h) || h <= 0) {
+        h = 175;
+        itemModified = true;
+      }
+
+      if (itemModified) {
+        plansModified = true;
+        return { ...p, weight: w, goalWeight: gw, height: h };
+      }
+      return p;
+    });
+
+    if (plansModified && email) {
+      localStorage.setItem(`${email}_plans`, JSON.stringify(sanitizedPlans));
+    }
+
+    const currentPlan = sanitizedPlans.find((p: any) => p.name === plan);
     if (currentPlan) {
       const storedWeights = JSON.parse(localStorage.getItem(`${email}_${plan}_weeklyWeights`) || "[]");
       const latestWeight = storedWeights.length > 0 ? storedWeights[storedWeights.length - 1].weight : currentPlan.weight;
@@ -115,6 +148,9 @@ function JourneyContent() {
       setSleepTargetState(currentPlan.sleepTarget || 8);
       setGoal(currentPlan.goal || "General Fitness");
       setActivityLevel(currentPlan.activityLevel || "moderate");
+      // load next weigh-in timestamp if present
+      const storedNext = localStorage.getItem(`${email}_${plan}_nextWeighIn`);
+      if (storedNext) setNextWeighIn(storedNext);
     }
 
     const savedCustom = email && plan ? localStorage.getItem(`${email}_${plan}_customTargets`) : null;
@@ -138,12 +174,22 @@ function JourneyContent() {
     const savedMeals = JSON.parse(localStorage.getItem(`${email}_customMeals`) || "[]");
     setCustomMeals(savedMeals);
 
-    // START FROM TODAY (0 to 30 days in future)
-    const today = new Date();
+    // DETERMINE DATE RANGE: Plan start date - 7 days to 30 days forward
+    const allPlans = JSON.parse(localStorage.getItem(`${email}_plans`) || "[]");
+    const activePlanObj = allPlans.find((p: any) => p.name === plan);
+    let planStartDate = activePlanObj?.startDate ? new Date(activePlanObj.startDate) : new Date();
+    
     const dates = [];
-    for (let i = 0; i <= 30; i++) {
-      const d = new Date();
-      d.setDate(today.getDate() + i);
+    // Start from 7 days before plan start (or earlier if specified)
+    const rangeStart = new Date(planStartDate);
+    rangeStart.setDate(rangeStart.getDate() - 7);
+    
+    // End at 30 days after today
+    const today = new Date();
+    const rangeEnd = new Date(today);
+    rangeEnd.setDate(rangeEnd.getDate() + 30);
+    
+    for (let d = new Date(rangeStart); d <= rangeEnd; d.setDate(d.getDate() + 1)) {
       dates.push(d.toISOString().split('T')[0]);
     }
     setPlanDays(dates);
@@ -188,6 +234,31 @@ function JourneyContent() {
       }
     } else { setSavedSleep(null); setSleepHours(""); setSleepQuality("Good"); }
   };
+
+  // countdown timer for next weigh-in (DD:HH:MM:SS)
+  useEffect(() => {
+    if (!nextWeighIn) {
+      setWeighInCountdown("");
+      return;
+    }
+    let mounted = true;
+    const update = () => {
+      const now = new Date();
+      const target = new Date(nextWeighIn as string);
+      let diff = Math.max(0, Math.floor((target.getTime() - now.getTime()) / 1000));
+      const days = Math.floor(diff / 86400);
+      diff = diff % 86400;
+      const hours = Math.floor(diff / 3600);
+      diff = diff % 3600;
+      const minutes = Math.floor(diff / 60);
+      const seconds = diff % 60;
+      const formatted = `${String(days).padStart(2, '0')}:${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+      if (mounted) setWeighInCountdown(formatted);
+    };
+    update();
+    const id = setInterval(update, 1000);
+    return () => { mounted = false; clearInterval(id); };
+  }, [nextWeighIn]);
 
   const handleDeleteSleepEntry = (index: number) => {
     if (!userEmail || !activePlan) return;
@@ -586,11 +657,47 @@ function JourneyContent() {
   const displayFat = formatMacroValue(currentDiet.fat);
 
   // --- Dynamic Scores for Journey Day Completion using centralized Goldilocks helper ---
+  // Compute weighted sleep quality across all sleep entries for the day
+  let weightedSleepHours = 0;
+  let weightedQualityPct: number | null = null;
+  if (Array.isArray(sleepEntries) && sleepEntries.length > 0) {
+    const qualityMap: Record<string, number> = { Excellent: 100, Good: 90, Fair: 75, Poor: 60 };
+    let totalHours = 0;
+    let weightedSum = 0;
+    sleepEntries.forEach((e: any) => {
+      const hrs = Number(e.hours) || 0;
+      const qLabel = e.quality || '';
+      const qKey = Object.keys(qualityMap).find(k => k.toLowerCase() === String(qLabel).toLowerCase()) || null;
+      const pct = qKey ? qualityMap[qKey] : (typeof e.quality === 'number' ? Number(e.quality) : 90);
+      totalHours += hrs;
+      weightedSum += hrs * pct;
+    });
+    weightedSleepHours = totalHours;
+    if (totalHours > 0) weightedQualityPct = Math.round((weightedSum / totalHours));
+  } else if (savedSleep) {
+    weightedSleepHours = savedSleep.hours || 0;
+    // savedSleep.quality may be a label — map it, or if numeric use as-is
+    const qm = savedSleep.quality;
+    if (typeof qm === 'number') weightedQualityPct = qm;
+    else if (typeof qm === 'string') {
+      const m: Record<string, number> = { Excellent: 100, Good: 90, Fair: 75, Poor: 60 };
+      const key = Object.keys(m).find(k => k.toLowerCase() === qm.toLowerCase());
+      weightedQualityPct = key ? m[key] : 90;
+    }
+  }
+
   const scoring = computeAdvancedGoldilocksScores({
     diet: { calories: currentDiet.calories, protein: currentDiet.protein, fat: currentDiet.fat },
-    sleepHours: savedSleep ? savedSleep.hours : 0,
+    sleepHours: weightedSleepHours,
     sleepTarget: effectiveSleepTarget,
+    sleepQuality: weightedQualityPct ?? undefined,
+    sleepLogged: (weightedSleepHours || 0) > 0,
     setsLogged: exerciseLogs.length,
+    setsMixed: (() => {
+      const counts: { [key: string]: number } = {};
+      exerciseLogs.forEach(log => { counts[log.exercise] = (counts[log.exercise] || 0) + 1; });
+      return Object.keys(counts).length > 1;
+    })(),
     waterIntake,
     targetHydration: waterTarget,
     targetCalories,
@@ -651,8 +758,34 @@ function JourneyContent() {
     }
 
     localStorage.setItem(`${userEmail}_${activePlan}_dailyReports`, JSON.stringify(updatedReports));
-    alert(`Progress for ${selectedDate} saved successfully!`);
-
+    
+    // Track completed day (for weekly progress)
+    const completedDays = JSON.parse(localStorage.getItem(`${userEmail}_${activePlan}_completedDays`) || "[]");
+    if (!completedDays.includes(selectedDate)) {
+      completedDays.push(selectedDate);
+      localStorage.setItem(`${userEmail}_${activePlan}_completedDays`, JSON.stringify(completedDays));
+      // Dispatch event to notify page of completed day
+      window.dispatchEvent(new Event("gym-plan-updated"));
+    }
+    
+    // Decrement days remaining for the 7‑day weigh‑in countdown
+    const daysKey = `${userEmail}_${activePlan}_daysRemaining`;
+    const storedDays = localStorage.getItem(daysKey);
+    const currentDays = storedDays ? parseInt(storedDays, 10) : 7;
+    const newDays = Math.max(0, currentDays - 1);
+    localStorage.setItem(daysKey, newDays.toString());
+    // If the countdown reached zero, schedule the actual weigh-in timestamp and reset counter
+    if (newDays === 0 && userEmail && activePlan) {
+      const next = new Date(selectedDate);
+      // schedule immediate weigh-in (today) — app may prompt user now; also set next cycle 7 days later
+      const nextCycle = new Date(selectedDate);
+      nextCycle.setDate(nextCycle.getDate() + 7);
+      localStorage.setItem(`${userEmail}_${activePlan}_nextWeighIn`, next.toISOString());
+      localStorage.setItem(daysKey, '7');
+      setNextWeighIn(next.toISOString());
+    }
+    // Log the updated days remaining for debugging
+    console.log('Days remaining after decrement:', newDays);
     const currentDate = new Date(selectedDate);
     currentDate.setDate(currentDate.getDate() + 1);
     const nextDateStr = currentDate.toISOString().split('T')[0];
@@ -670,6 +803,9 @@ function JourneyContent() {
         {activePlan && (
           <div className="bg-blue-50 px-4 py-2 rounded-2xl border border-blue-100">
             <span className="font-bold text-blue-500">Plan: {activePlan}</span>
+            {weighInCountdown && (
+              <div className="text-xs text-gray-500 mt-1">Next weigh-in: {weighInCountdown} (DD:HH:MM:SS)</div>
+            )}
           </div>
         )}
       </header>

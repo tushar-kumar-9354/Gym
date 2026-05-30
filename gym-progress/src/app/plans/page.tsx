@@ -21,6 +21,7 @@ export default function Plans() {
   const [activityLevel, setActivityLevel] = useState("moderate");
   const [sleepTarget, setSleepTarget] = useState("8");
   const [goal, setGoal] = useState("General Fitness");
+  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
 
   useEffect(() => {
     const email = localStorage.getItem("userEmail") || "";
@@ -31,7 +32,37 @@ export default function Plans() {
       setActivePlan(plan);
       
       const plans = JSON.parse(localStorage.getItem(`${email}_plans`) || "[]");
-      setSavedPlans(plans);
+      let plansModified = false;
+      const sanitizedPlans = plans.map((p: any) => {
+        let itemModified = false;
+        let w = p.weight;
+        let gw = p.goalWeight;
+        let h = p.height;
+
+        if (typeof w !== 'number' || isNaN(w) || w <= 0) {
+          w = 80;
+          itemModified = true;
+        }
+        if (typeof gw !== 'number' || isNaN(gw) || gw <= 0) {
+          gw = 75;
+          itemModified = true;
+        }
+        if (typeof h !== 'number' || isNaN(h) || h <= 0) {
+          h = 175;
+          itemModified = true;
+        }
+
+        if (itemModified) {
+          plansModified = true;
+          return { ...p, weight: w, goalWeight: gw, height: h };
+        }
+        return p;
+      });
+
+      if (plansModified) {
+        localStorage.setItem(`${email}_plans`, JSON.stringify(sanitizedPlans));
+      }
+      setSavedPlans(sanitizedPlans);
 
       // Pre-fill from metrics
       const metrics = JSON.parse(localStorage.getItem(`${email}_metrics`) || "{}");
@@ -44,15 +75,33 @@ export default function Plans() {
     e.preventDefault();
     if (!userEmail) return;
 
+    const parsedWeight = parseFloat(weight);
+    const parsedHeight = parseFloat(height);
+    const parsedGoalWeight = parseFloat(goalWeight);
+
+    if (isNaN(parsedWeight) || parsedWeight <= 0) {
+      alert("Please enter a valid positive current weight.");
+      return;
+    }
+    if (isNaN(parsedHeight) || parsedHeight <= 0) {
+      alert("Please enter a valid positive height.");
+      return;
+    }
+    if (isNaN(parsedGoalWeight) || parsedGoalWeight <= 0) {
+      alert("Please enter a valid positive goal weight.");
+      return;
+    }
+
     const planData = {
       name,
-      weight: parseFloat(weight),
-      height: parseFloat(height),
-      goalWeight: parseFloat(goalWeight),
+      weight: parsedWeight,
+      height: parsedHeight,
+      goalWeight: parsedGoalWeight,
       duration: parseInt(duration),
       activityLevel,
       sleepTarget: parseInt(sleepTarget),
       goal,
+      startDate: startDate,
       date: editingPlan ? editingPlan.date : new Date().toISOString(),
     };
 
@@ -77,13 +126,29 @@ export default function Plans() {
       localStorage.setItem(`${userEmail}_activePlan`, name); // Set as active
       setActivePlan(name);
     }
+    // If this was a new plan creation, initialize weekly weights and next weigh-in BEFORE notifying other pages
+    if (!editingPlan) {
+      try {
+        const firstDateIso = planData.startDate ? new Date(planData.startDate).toISOString() : new Date().toISOString();
+        const weekly = [{ weight: parsedWeight, date: firstDateIso }];
+        localStorage.setItem(`${userEmail}_${name}_weeklyWeights`, JSON.stringify(weekly));
+        // schedule next weigh-in 7 days after start
+        const next = new Date(firstDateIso);
+        next.setDate(next.getDate() + 7);
+        localStorage.setItem(`${userEmail}_${name}_nextWeighIn`, next.toISOString());
+        // also set a simple days remaining counter (for legacy usages)
+        localStorage.setItem(`${userEmail}_${name}_daysRemaining`, '7');
+      } catch (e) {
+        // ignore storage errors
+      }
+    }
 
     window.dispatchEvent(new CustomEvent("gym-plan-updated"));
-    
+
     setSavedPlans(updatedPlans);
     setShowForm(false);
     setEditingPlan(null);
-    
+
     // Clear form
     setName("");
     setGoalWeight("");
@@ -100,6 +165,7 @@ export default function Plans() {
     setActivityLevel(plan.activityLevel || "moderate");
     setSleepTarget((plan.sleepTarget || 8).toString());
     setGoal(plan.goal || "General Fitness");
+    setStartDate(plan.startDate || new Date().toISOString().split('T')[0]);
     setShowForm(true);
   };
 
@@ -200,6 +266,7 @@ export default function Plans() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Current Weight (kg)</label>
                 <input 
                   type="number" 
+                  min="1"
                   value={weight}
                   onChange={(e) => setWeight(e.target.value)}
                   placeholder="e.g. 80"
@@ -212,6 +279,7 @@ export default function Plans() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Height (cm)</label>
                 <input 
                   type="number" 
+                  min="1"
                   value={height}
                   onChange={(e) => setHeight(e.target.value)}
                   placeholder="e.g. 180"
@@ -227,6 +295,7 @@ export default function Plans() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Goal Weight (kg)</label>
                 <input 
                   type="number" 
+                  min="1"
                   value={goalWeight}
                   onChange={(e) => setGoalWeight(e.target.value)}
                   placeholder="e.g. 75"
@@ -263,6 +332,18 @@ export default function Plans() {
                 <option value="General Fitness">General Fitness</option>
                 <option value="Athletic Performance">Athletic Performance</option>
               </select>
+            </div>
+
+            {/* Plan Start Date */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Plan Start Date</label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-full bg-gray-50 border border-gray-100 rounded-2xl py-2.5 px-4 text-gray-900 focus:outline-none focus:border-blue-500"
+              />
+              <p className="text-xs text-gray-400 mt-1">You can start a plan from a past date to track previous days</p>
             </div>
 
             {/* Activity Level + Sleep Target */}
@@ -326,6 +407,7 @@ export default function Plans() {
                     <div>
                       <h3 className="font-semibold text-gray-900 text-lg">{plan.name}</h3>
                       <p className="text-sm text-gray-500">{plan.duration} Months • Target: {plan.goalWeight} kg • Current: {plan.weight} kg</p>
+                      <p className="text-xs text-gray-400 mt-1">Started: {plan.startDate ? new Date(plan.startDate).toLocaleDateString() : 'Not set'}</p>
                     </div>
                     <div className="flex gap-2 w-full md:w-auto justify-end">
                       <button 

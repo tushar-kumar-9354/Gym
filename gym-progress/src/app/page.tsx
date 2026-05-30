@@ -11,7 +11,7 @@ import { computeGoldilocksScores, computeAdvancedGoldilocksScores } from "@/lib/
 import { computePlanTargets } from "@/lib/planTargets";
 
 export default function Dashboard() {
-  const TEST_MODE = false; // production: real timing (weekly weigh-ins every 7 days)
+  const TEST_MODE = false; // production: 7‑day interval
   const [activePlan, setActivePlan] = useState<string | null>(null);
   const [userName, setUserName] = useState("User");
   const [userEmail, setUserEmail] = useState("");
@@ -100,6 +100,7 @@ export default function Dashboard() {
   const [goalWeight, setGoalWeight] = useState(75);
   const [planDuration, setPlanDuration] = useState(3); // in months
   const [planStartDate, setPlanStartDate] = useState<string | null>(null);
+  const [completedDaysState, setCompletedDaysState] = useState<string[]>([]);
 
   // Form for weekly weight
   const [newWeeklyWeight, setNewWeeklyWeight] = useState("");
@@ -111,6 +112,8 @@ export default function Dashboard() {
   const [timeTick, setTimeTick] = useState(0);
   const [lastActionTime, setLastActionTime] = useState<number>(0);
   const [showCompletionModal, setShowCompletionModal] = useState(false);
+  const [weighInCountdown, setWeighInCountdown] = useState<string>("");
+  const [autoOpenWeighIn, setAutoOpenWeighIn] = useState<boolean>(false);
 
   useEffect(() => {
     if (!TEST_MODE) return;
@@ -119,6 +122,86 @@ export default function Dashboard() {
     }, 500);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (!TEST_MODE) {
+      // Refresh countdown every minute in production mode
+      const interval = setInterval(() => setTimeTick((t) => t + 1), 60 * 1000);
+      return () => clearInterval(interval);
+    }
+  }, []);
+
+  // Live countdown for next weigh-in: read stored timestamp and update every second
+  useEffect(() => {
+    let id: number | null = null;
+
+    const computeTargetDate = () => {
+      if (!userEmail || !activePlan) return null;
+      // 1) Prefer explicit stored timestamp
+      const key = `${userEmail}_${activePlan}_nextWeighIn`;
+      const stored = typeof window !== 'undefined' ? localStorage.getItem(key) : null;
+      if (stored) {
+        const parsed = new Date(stored);
+        if (!isNaN(parsed.getTime())) return parsed;
+      }
+
+      // 2) If no explicit timestamp, derive from last weekly weight
+      const last = getLatestPastWeightEntryDate(weeklyWeights) || getLatestWeightEntryDate(weeklyWeights);
+      const now = new Date();
+      if (last) {
+        const candidate = new Date(last);
+        // advance to next future weekly slot
+        while (candidate.getTime() <= now.getTime()) candidate.setDate(candidate.getDate() + 7);
+        return candidate;
+      }
+
+      // 3) Fall back to stored remaining days or default 7 days
+      const storedDays = typeof window !== 'undefined' ? localStorage.getItem(`${userEmail}_${activePlan}_daysRemaining`) : null;
+      const remainingDays = storedDays ? parseInt(storedDays, 10) : 7;
+      const fallback = new Date(now);
+      fallback.setDate(fallback.getDate() + remainingDays);
+      return fallback;
+    };
+
+    const start = () => {
+      if (!userEmail || !activePlan) {
+        setWeighInCountdown("");
+        return;
+      }
+
+      const update = () => {
+        const target = computeTargetDate();
+        if (!target) {
+          setWeighInCountdown("");
+          return;
+        }
+        // cap to plan end
+        const planEnd = getPlanEndDate();
+        const capped = target.getTime() > planEnd.getTime() ? planEnd : target;
+        const now = new Date();
+        let diffSec = Math.max(0, Math.floor((capped.getTime() - now.getTime()) / 1000));
+        const days = Math.floor(diffSec / 86400);
+        diffSec = diffSec % 86400;
+        const hours = Math.floor(diffSec / 3600);
+        diffSec = diffSec % 3600;
+        const minutes = Math.floor(diffSec / 60);
+        const seconds = diffSec % 60;
+        const formatted = `${String(days).padStart(2, '0')}:${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        setWeighInCountdown(formatted);
+        if (capped.getTime() - now.getTime() <= 0) {
+          setAutoOpenWeighIn(true);
+        } else {
+          setAutoOpenWeighIn(false);
+        }
+      };
+
+      update();
+      id = window.setInterval(update, 1000);
+    };
+
+    start();
+    return () => { if (id) clearInterval(id); };
+  }, [userEmail, activePlan, weeklyWeights, planStartDate]);
 
   // Set View Toggle
   const [setViewMode, setSetViewMode] = useState<"Today" | "Yesterday">("Today");
@@ -136,7 +219,7 @@ export default function Dashboard() {
 
   const normalizeWeeklyWeights = (weights: { date: string; weight: number }[]) =>
     [...weights]
-      .filter((entry) => typeof entry?.weight === "number" && Number.isFinite(entry.weight))
+      .filter((entry) => typeof entry?.weight === "number" && Number.isFinite(entry.weight) && entry.weight > 0)
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
   const getPlanEndDate = () => {
@@ -195,7 +278,39 @@ export default function Dashboard() {
     const name = localStorage.getItem("userName");
     const plan = email ? localStorage.getItem(`${email}_activePlan`) : null;
     const plans = email ? JSON.parse(localStorage.getItem(`${email}_plans`) || "[]") : [];
-    const currentPlan = plans.find((p: any) => p.name === plan);
+
+    let plansModified = false;
+    const sanitizedPlans = plans.map((p: any) => {
+      let itemModified = false;
+      let w = p.weight;
+      let gw = p.goalWeight;
+      let h = p.height;
+
+      if (typeof w !== 'number' || isNaN(w) || w <= 0) {
+        w = 80;
+        itemModified = true;
+      }
+      if (typeof gw !== 'number' || isNaN(gw) || gw <= 0) {
+        gw = 75;
+        itemModified = true;
+      }
+      if (typeof h !== 'number' || isNaN(h) || h <= 0) {
+        h = 175;
+        itemModified = true;
+      }
+
+      if (itemModified) {
+        plansModified = true;
+        return { ...p, weight: w, goalWeight: gw, height: h };
+      }
+      return p;
+    });
+
+    if (plansModified && email) {
+      localStorage.setItem(`${email}_plans`, JSON.stringify(sanitizedPlans));
+    }
+
+    const currentPlan = sanitizedPlans.find((p: any) => p.name === plan);
     const savedCustomEx = email ? JSON.parse(localStorage.getItem(`${email}_customExercises`) || "{}") : {};
 
     if (!currentPlan) {
@@ -215,12 +330,13 @@ export default function Dashboard() {
       setLoggedWater(0);
       setCustomTargets(null);
       setCustomExerciseDB(savedCustomEx);
+      setCompletedDaysState([]);
       return;
     }
 
-    let startW = currentPlan.weight;
-    let goalW = currentPlan.goalWeight;
-    let duration = currentPlan.duration;
+    const startW = (typeof currentPlan.weight === 'number' && currentPlan.weight > 0) ? currentPlan.weight : 0;
+    const goalW = (typeof currentPlan.goalWeight === 'number' && currentPlan.goalWeight > 0) ? currentPlan.goalWeight : 0;
+    const duration = (typeof currentPlan.duration === 'number' && currentPlan.duration > 0) ? currentPlan.duration : 0;
     let startDate = currentPlan.date || new Date().toISOString();
     let logs: any[] = [];
     let meals: any[] = [];
@@ -256,7 +372,7 @@ export default function Dashboard() {
           if (parsed.sleep && (typeof parsed.sleep !== "number" || parsed.sleep < 4 || parsed.sleep > 16)) delete parsed.sleep;
           customT = parsed;
         }
-      } catch {}
+      } catch { }
     }
 
     setUserEmail(email);
@@ -275,6 +391,8 @@ export default function Dashboard() {
     setLoggedWater(waterVal);
     if (customT) setCustomTargets(customT);
     setCustomExerciseDB(savedCustomEx);
+    const storedCompleted = JSON.parse(localStorage.getItem(`${email}_${plan}_completedDays`) || "[]");
+    setCompletedDaysState(Array.isArray(storedCompleted) ? storedCompleted : []);
   };
 
   useEffect(() => {
@@ -282,7 +400,7 @@ export default function Dashboard() {
 
     const handlePlanRefresh = () => loadPlanState();
     const handleStorageRefresh = (event: StorageEvent) => {
-      if (!event.key || event.key.includes("_plans") || event.key.includes("_activePlan") || event.key.includes("_weeklyWeights") || event.key.includes("_exerciseLogs") || event.key.includes("_waterIntake") || event.key.includes("_customTargets")) {
+      if (!event.key || event.key.includes("_plans") || event.key.includes("_activePlan") || event.key.includes("_weeklyWeights") || event.key.includes("_exerciseLogs") || event.key.includes("_waterIntake") || event.key.includes("_customTargets") || event.key.includes("_completedDays")) {
         loadPlanState();
       }
     };
@@ -358,6 +476,7 @@ export default function Dashboard() {
     const newEntry = { date: getTestModeWeightDate(), weight: weightVal };
     const updatedWeights = normalizeWeeklyWeights([...weeklyWeights, newEntry]);
     persistWeeklyWeights(updatedWeights);
+    setAutoOpenWeighIn(false);
 
     // Calculate expected weight today to evaluate recommendation
     const startObj = planStartDate ? new Date(planStartDate) : new Date();
@@ -643,6 +762,9 @@ export default function Dashboard() {
 
   // --- Dynamic Scores for 6-metric Grid using Goldilocks Zone Penalty Rule ---
   const setsLoggedToday = exerciseLogs.filter(l => l.date && l.date.startsWith(todayStr)).length;
+  const todaysExerciseLogs = exerciseLogs.filter(l => l.date && l.date.startsWith(todayStr));
+  const todaysDistinctExercises = new Set(todaysExerciseLogs.map(l => l.exercise)).size;
+  const setsMixedToday = todaysDistinctExercises > 1;
 
   // Sleep warning/penalty logic:
   let sleepHoursDeduction = 0;
@@ -651,11 +773,20 @@ export default function Dashboard() {
   let currentSleep = 0;
   let currentSleepQuality = "Good";
   if (Array.isArray(todaySleepEntry)) {
-    currentSleep = todaySleepEntry.reduce((s: number, e: any) => s + (e.hours || 0), 0);
-    const qualities: Record<string, number> = {};
-    todaySleepEntry.forEach((e: any) => { if (e.quality) qualities[e.quality] = (qualities[e.quality] || 0) + 1; });
-    const most = Object.keys(qualities).reduce((a, b) => qualities[a] > qualities[b] ? a : b, "Good");
-    currentSleepQuality = most || "Good";
+    // compute total hours and weighted quality percentage
+    const qualityMap: Record<string, number> = { Excellent: 100, Good: 90, Fair: 75, Poor: 60 };
+    let totalHours = 0;
+    let weightedSum = 0;
+    todaySleepEntry.forEach((e: any) => {
+      const hrs = Number(e.hours) || 0;
+      const qLabel = e.quality || '';
+      const key = Object.keys(qualityMap).find(k => k.toLowerCase() === String(qLabel).toLowerCase()) || null;
+      const pct = key ? qualityMap[key] : (typeof e.quality === 'number' ? Number(e.quality) : 90);
+      totalHours += hrs;
+      weightedSum += hrs * pct;
+    });
+    currentSleep = totalHours;
+    currentSleepQuality = totalHours > 0 ? Math.round(weightedSum / totalHours) : "Good";
   } else if (todaySleepEntry && typeof todaySleepEntry.hours === 'number') {
     currentSleep = todaySleepEntry.hours;
     currentSleepQuality = todaySleepEntry.quality || "Good";
@@ -666,9 +797,10 @@ export default function Dashboard() {
     diet: { calories: currentCalories, protein: currentProtein, fat: currentFats },
     sleepHours: currentSleep,
     sleepTarget: sleepTargetVal,
-    sleepQuality: currentSleepQuality,
+    sleepQuality: typeof currentSleepQuality === 'number' ? currentSleepQuality : currentSleepQuality,
     sleepLogged: !!todaySleepEntry,
     setsLogged: setsLoggedToday,
+    setsMixed: setsMixedToday,
     waterIntake: loggedWater,
     targetHydration,
     targetCalories,
@@ -749,8 +881,48 @@ export default function Dashboard() {
 
   // --- Weigh-in Logic & Status ---
   let daysSinceStart = 0;
-  let nextWeighInDays = 7;
+  let nextWeighInDays = 2;
   let showWeighInForm = false;
+
+  // Calculate weekly progress
+  let weeklyProgressRemaining = 7;
+  let weeksCompleted = 0;
+  let currentWeekNumber = 0;
+
+  if (activePlan && userEmail) {
+    // Get the plan's start date
+    const planObj = savedPlans.find((p: any) => p.name === activePlan);
+    const planStartDateStr = planObj?.startDate || new Date().toISOString().split('T')[0];
+    const startDate = new Date(planStartDateStr);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    startDate.setHours(0, 0, 0, 0);
+
+    // Calculate days since plan started
+    const daysSinceStartVal = Math.floor((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+
+    // Calculate current week (0-indexed, so week 0 is first week, week 1 is second week, etc.)
+    currentWeekNumber = Math.floor(daysSinceStartVal / 7);
+    weeksCompleted = currentWeekNumber;
+
+    // Get completed days for current week (from React state)
+    const completedDays: string[] = completedDaysState || JSON.parse(localStorage.getItem(`${userEmail}_${activePlan}_completedDays`) || "[]");
+
+    // Calculate the start date of current week
+    const currentWeekStart = new Date(startDate);
+    currentWeekStart.setDate(currentWeekStart.getDate() + currentWeekNumber * 7);
+    const currentWeekEnd = new Date(currentWeekStart);
+    currentWeekEnd.setDate(currentWeekEnd.getDate() + 7);
+
+    // Count completed days in current week
+    const completedThisWeek = completedDays.filter(dateStr => {
+      const date = new Date(dateStr);
+      date.setHours(0, 0, 0, 0);
+      return date >= currentWeekStart && date < currentWeekEnd;
+    }).length;
+
+    weeklyProgressRemaining = Math.max(0, 7 - completedThisWeek);
+  }
 
   if (planStartDate) {
     const startObj = new Date(planStartDate);
@@ -767,8 +939,10 @@ export default function Dashboard() {
       } else {
         showWeighInForm = false;
         nextWeighInDays = Math.ceil((3000 - elapsedMs) / 1000);
+        // TEST_MODE fallback handled by live effect; leave nextWeighInDays for simple display
       }
     } else {
+      // Calculate next weigh‑in based on 7‑day schedule
       let nextWeighInDate: Date;
 
       if (lastWeighInDate) {
@@ -778,24 +952,23 @@ export default function Dashboard() {
           nextWeighInDate.setDate(nextWeighInDate.getDate() + 7);
         }
       } else {
-        // No weigh-ins yet: prefer the first weekly slot on/after plan start.
-        nextWeighInDate = new Date(startObj);
-        if (nextWeighInDate.getTime() <= now.getTime()) {
-          // schedule next weekly slot from today
-          nextWeighInDate = new Date(now);
-          nextWeighInDate.setDate(nextWeighInDate.getDate() + 7);
-        }
+        // No weigh‑ins yet: use stored remaining days for 7‑day countdown
+        const storedDays = localStorage.getItem(`${userEmail}_${activePlan}_daysRemaining`);
+        const remainingDays = storedDays ? parseInt(storedDays, 10) : 7;
+        nextWeighInDate = new Date(now);
+        nextWeighInDate.setDate(now.getDate() + remainingDays);
       }
 
       // cap next weigh-in to plan end
       const planEnd = getPlanEndDate();
-      if (nextWeighInDate.getTime() > planEnd.getTime()) {
+        if (nextWeighInDate.getTime() > planEnd.getTime()) {
         showWeighInForm = false;
         nextWeighInDays = 0;
       } else {
         const diffMs = nextWeighInDate.getTime() - now.getTime();
-        if (diffMs <= 0) {
+        if (diffMs <= 0 || !lastWeighInDate) {
           showWeighInForm = true;
+          nextWeighInDays = 0;
         } else {
           showWeighInForm = false;
           nextWeighInDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
@@ -865,6 +1038,7 @@ export default function Dashboard() {
   const planFinished = weeklyWeights.length >= getRequiredWeeklyLogs();
   if (planFinished) {
     showWeighInForm = false;
+    nextWeighInDays = 0;
   }
 
   useEffect(() => {
@@ -878,6 +1052,7 @@ export default function Dashboard() {
       setShowCompletionModal(false);
     }
   }, [activePlan, planFinished, weeklyWeights]);
+  const displayWeighInCountdown = weighInCountdown;
   const weeklyAverageWeight = sortedWeeklyWeights.length > 0
     ? sortedWeeklyWeights.reduce((sum, entry) => sum + entry.weight, 0) / sortedWeeklyWeights.length
     : startWeight;
@@ -1089,7 +1264,7 @@ export default function Dashboard() {
                 <span className="text-xs text-gray-500 flex items-center justify-center gap-1"><Dumbbell size={12} /> Workout (12%)</span>
                 <p className="font-bold text-gray-900 mt-1">{setsLoggedToday} / 6 sets</p>
               </div>
-                <div className="text-center">
+              <div className="text-center">
                 <span className="text-xs text-gray-500 flex items-center justify-center gap-1"><Droplets size={12} /> Hydration (10%)</span>
                 <p className="font-bold text-gray-900 mt-1">{formatLiters(loggedWater)} / {formatLiters(targetHydration)}L</p>
               </div>
@@ -1146,9 +1321,8 @@ export default function Dashboard() {
                       const isInBuffer = item.isOnTarget && item.warning && item.warning.toLowerCase().includes("within safe range");
                       const isPenalty = item.penalty > 0;
                       return (
-                        <div key={item.key} className={`bg-white p-3.5 rounded-2xl border flex justify-between items-center transition-colors ${
-                          isPenalty ? "border-red-100 bg-red-50/30" : isInBuffer ? "border-amber-100 bg-amber-50/30" : "border-gray-100"
-                        }`}>
+                        <div key={item.key} className={`bg-white p-3.5 rounded-2xl border flex justify-between items-center transition-colors ${isPenalty ? "border-red-100 bg-red-50/30" : isInBuffer ? "border-amber-100 bg-amber-50/30" : "border-gray-100"
+                          }`}>
                           <div className="flex items-center gap-2.5">
                             <div className={`p-2 rounded-xl shrink-0 ${bgColorsMap[item.key] || "bg-gray-50"}`}>
                               {iconsMap[item.key] || <AlertCircle size={16} />}
@@ -1185,11 +1359,10 @@ export default function Dashboard() {
                         {warningsList.map((warn, idx) => (
                           <div
                             key={idx}
-                            className={`p-2.5 rounded-xl border text-xs flex items-center gap-2 ${
-                              warn.severity === "penalty"
-                                ? "bg-red-50/75 border-red-100/70 text-red-700"
-                                : "bg-amber-50/75 border-amber-100/70 text-amber-700"
-                            }`}
+                            className={`p-2.5 rounded-xl border text-xs flex items-center gap-2 ${warn.severity === "penalty"
+                              ? "bg-red-50/75 border-red-100/70 text-red-700"
+                              : "bg-amber-50/75 border-amber-100/70 text-amber-700"
+                              }`}
                           >
                             <span className="font-bold uppercase tracking-wide text-[9px] bg-white px-1.5 py-0.5 rounded shadow-xs shrink-0">
                               {warn.metric}
@@ -1332,23 +1505,23 @@ export default function Dashboard() {
               <h3 className="text-lg font-semibold text-blue-500 mb-4">Weight Progress</h3>
               <div className="space-y-4">
                 <div className="flex flex-col">
-                    <div className="flex items-center justify-between text-sm mb-1">
+                  <div className="flex items-center justify-between text-sm mb-1">
                     <span className="text-gray-500">Current</span>
-                    <span className="font-medium text-gray-900">{Math.round(currentActualWeight)} kg</span>
+                    <span className="font-medium text-gray-900">{Math.max(1, Math.round(currentActualWeight || 0))} kg</span>
                   </div>
                   <p className="text-[11px] text-gray-500 mb-2">
-                    Starting weight / fitness date weight: <span className="font-semibold text-gray-700">{Math.round(startWeight)} kg</span>
+                    Starting weight / fitness date weight: <span className="font-semibold text-gray-700">{Math.max(1, Math.round(startWeight || 0))} kg</span>
                   </p>
                   <div className="flex items-center justify-between text-sm mb-2">
                     <span className="text-gray-500">Goal</span>
-                    <span className="font-medium text-blue-500">{Math.round(goalWeight)} kg</span>
+                    <span className="font-medium text-blue-500">{Math.max(1, Math.round(goalWeight || 0))} kg</span>
                   </div>
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-xs text-gray-500">
                       <span>Weekly weight progress</span>
-                      <span>{Math.round(weightProgress)}%</span>
+                      <span>{Math.max(0, Math.round(weightProgress || 0))}%</span>
                     </div>
-                    <ProgressBar label="" progress={weightProgress} colorClass="bg-blue-500" showText={false} />
+                    <ProgressBar label="" progress={Math.max(0, weightProgress || 0)} colorClass="bg-blue-500" showText={false} />
                     <p className="text-[11px] text-gray-500">
                       {sortedWeeklyWeights.length > 0
                         ? `${sortedWeeklyWeights.length} weekly log${sortedWeeklyWeights.length === 1 ? "" : "s"} • Last update ${new Date(sortedWeeklyWeights[sortedWeeklyWeights.length - 1].date).toLocaleDateString()}`
@@ -1363,10 +1536,11 @@ export default function Dashboard() {
                       <span className="text-sm font-bold text-gray-500 block">Plan Completed 🏆</span>
                       <span className="text-xs text-gray-400 block mt-1">Weekly logs are locked. Extend your plan duration to log more.</span>
                     </div>
-                  ) : showWeighInForm ? (
+                  ) : (showWeighInForm || autoOpenWeighIn) ? (
                     <form onSubmit={handleAddWeeklyWeight} className="flex gap-2">
                       <input
                         type="number"
+                        min="1"
                         value={newWeeklyWeight}
                         onChange={(e) => setNewWeeklyWeight(e.target.value)}
                         placeholder="Log weight (kg)"
@@ -1380,7 +1554,11 @@ export default function Dashboard() {
                   ) : (
                     <div className="text-center bg-gray-50 rounded-lg p-3">
                       <span className="text-sm font-medium text-gray-600 block">Next weigh-in in</span>
-                      <span className="text-2xl font-bold text-blue-500 block mt-1">{nextWeighInDays} <span className="text-sm font-medium">{TEST_MODE ? "seconds" : "days"}</span></span>
+                      {displayWeighInCountdown ? (
+                        <span className="text-2xl font-bold text-blue-500 block mt-1">{displayWeighInCountdown} <span className="text-sm font-medium">DD:HH:MM:SS</span></span>
+                      ) : (
+                        <span className="text-2xl font-bold text-blue-500 block mt-1">{nextWeighInDays} <span className="text-sm font-medium">{TEST_MODE ? "seconds" : "days"}</span></span>
+                      )}
                     </div>
                   )}
 
@@ -1433,6 +1611,7 @@ export default function Dashboard() {
                                 <label className="text-xs font-semibold text-gray-600">Corrected weight (kg)</label>
                                 <input
                                   type="number"
+                                  min="1"
                                   value={editWeightValue}
                                   onChange={(e) => setEditWeightValue(e.target.value)}
                                   placeholder="Enter corrected weight"
@@ -1447,6 +1626,22 @@ export default function Dashboard() {
                                   className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
                                 >
                                   Confirm correction
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (window.confirm("Are you sure you want to delete this weight log?")) {
+                                      const updatedWeights = normalizeWeeklyWeights(
+                                        weeklyWeights.filter((entry) => getWeightDateKey(entry.date) !== selectedWeightEntryDate)
+                                      );
+                                      persistWeeklyWeights(updatedWeights);
+                                      setUpdateStatus("Weight log deleted.");
+                                      setShowWeightEditor(false);
+                                    }
+                                  }}
+                                  className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+                                >
+                                  Delete log
                                 </button>
                                 <button
                                   type="button"
@@ -1507,7 +1702,7 @@ export default function Dashboard() {
                       <div className="h-4 bg-amber-200/50 rounded-md w-3/4"></div>
                       <div className="h-3 bg-amber-200/30 rounded-md w-5/6"></div>
                       <div className="h-3 bg-amber-200/30 rounded-md w-2/3"></div>
-                      
+
                       <div className="space-y-2 pt-2">
                         <div className="h-3 bg-amber-200/40 rounded-md w-1/3"></div>
                         <div className="grid grid-cols-2 gap-2">
@@ -1760,7 +1955,7 @@ export default function Dashboard() {
                 Outstanding dedication! You have successfully completed all required weekly logs for your active plan <strong className="text-blue-600 font-bold">"{activePlan}"</strong>.
               </p>
             </div>
-            
+
             <div className="bg-blue-50/50 border border-blue-100 rounded-2xl p-4 text-left">
               <p className="text-xs text-blue-700 font-medium leading-relaxed">
                 🎓 <strong>Legacy Report Card</strong>: We have compiled a deep performance breakdown of your sets, diet, sleep, and recovery metrics with AI legacy analysis.
@@ -1769,7 +1964,7 @@ export default function Dashboard() {
 
             <div className="flex flex-col gap-2.5 pt-2">
               <Link href="/completed-plan" className="w-full">
-                <button 
+                <button
                   onClick={() => {
                     const email = localStorage.getItem("userEmail") || "";
                     localStorage.setItem(`${email}_${activePlan}_completed_dismissed`, "true");
@@ -1781,7 +1976,7 @@ export default function Dashboard() {
                 </button>
               </Link>
               <Link href="/plans" className="w-full">
-                <button 
+                <button
                   onClick={() => {
                     const email = localStorage.getItem("userEmail") || "";
                     localStorage.setItem(`${email}_${activePlan}_completed_dismissed`, "true");
@@ -1792,7 +1987,7 @@ export default function Dashboard() {
                   Extend / Customize Plan
                 </button>
               </Link>
-              <button 
+              <button
                 type="button"
                 onClick={() => {
                   const email = localStorage.getItem("userEmail") || "";

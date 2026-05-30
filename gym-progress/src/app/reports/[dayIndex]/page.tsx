@@ -14,7 +14,39 @@ export default function DayDetail({ params }: { params: { dayIndex: string } }) 
     const email = localStorage.getItem("userEmail") || "";
     const planName = localStorage.getItem(`${email}_activePlan`) || "";
     const plans = JSON.parse(localStorage.getItem(`${email}_plans`) || "[]");
-    const plan = plans.find((p: any) => p.name === planName) || null;
+    
+    let plansModified = false;
+    const sanitizedPlans = plans.map((p: any) => {
+      let itemModified = false;
+      let w = p.weight;
+      let gw = p.goalWeight;
+      let h = p.height;
+
+      if (typeof w !== 'number' || isNaN(w) || w <= 0) {
+        w = 80;
+        itemModified = true;
+      }
+      if (typeof gw !== 'number' || isNaN(gw) || gw <= 0) {
+        gw = 75;
+        itemModified = true;
+      }
+      if (typeof h !== 'number' || isNaN(h) || h <= 0) {
+        h = 175;
+        itemModified = true;
+      }
+
+      if (itemModified) {
+        plansModified = true;
+        return { ...p, weight: w, goalWeight: gw, height: h };
+      }
+      return p;
+    });
+
+    if (plansModified && email) {
+      localStorage.setItem(`${email}_plans`, JSON.stringify(sanitizedPlans));
+    }
+
+    const plan = sanitizedPlans.find((p: any) => p.name === planName) || null;
     if (!plan) return null;
 
     const storedWeights = JSON.parse(localStorage.getItem(`${email}_${planName}_weeklyWeights`) || "[]");

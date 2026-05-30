@@ -11,6 +11,7 @@ export interface ScoringInputs {
   sleepQuality?: string | number; // e.g., 'Excellent' | 'Good' | 'Fair' | 'Poor' or numeric percent 0-100
   sleepLogged?: boolean;
   setsLogged: number;
+  setsMixed?: boolean;
   waterIntake: number; // ml
   targetHydration: number; // ml
   targetCalories: number;
@@ -106,21 +107,26 @@ export function computeAdvancedGoldilocksScores(input: ScoringInputs): AdvancedS
     : '';
   const sleepWarning = qualityMsg ? `${durationMsg} · ${qualityMsg}` : durationMsg;
 
-  // Calories analysis
+  // Calories analysis — add an over-target warning buffer of +300 kcal
   const caloriesDelta = diet.calories - targetCalories;
+  const CALORIES_OVER_BUFFER = 300;
   const caloriesPenalty = Math.max(0, Math.round((25 - result.calPoints) * 10) / 10);
+  const caloriesInBuffer = caloriesDelta > 0 && caloriesDelta <= CALORIES_OVER_BUFFER;
   const caloriesWarning = diet.calories > 0
     ? caloriesDelta > 0
-      ? `Calories are ${caloriesDelta} kcal above target`
+      ? caloriesInBuffer
+        ? `Calories are ${caloriesDelta} kcal above target (within safe range)`
+        : `Calories are ${caloriesDelta} kcal above target`
       : caloriesDelta < 0
         ? `Calories are ${Math.abs(caloriesDelta)} kcal below target`
         : "Calories are on target"
     : "No calories logged yet";
 
-  // Protein analysis (buffer: 15g over target = warning only, beyond = penalty)
+  // Protein analysis (buffer increased to +20g over target = warning only, beyond = penalty)
   const proteinDelta = diet.protein - targetProtein;
+  const PROTEIN_OVER_BUFFER = 20;
   const proteinRealPenalty = Math.max(0, Math.round((15 - result.proteinPoints) * 10) / 10);
-  const proteinInBuffer = proteinDelta > 0 && proteinDelta <= 15;
+  const proteinInBuffer = proteinDelta > 0 && proteinDelta <= PROTEIN_OVER_BUFFER;
   const proteinWarning = diet.protein > 0
     ? proteinDelta > 0
       ? proteinInBuffer
@@ -131,10 +137,14 @@ export function computeAdvancedGoldilocksScores(input: ScoringInputs): AdvancedS
         : "Protein is on target"
     : "No protein logged yet";
 
-  // Workout analysis (buffer: +4 sets over target = warning only, beyond = penalty)
-  const workoutDelta = setsLogged - 6;
+  // Workout analysis
+  // New minimum target: 10 sets; over-target buffer default +5 sets (warning only).
+  // If `setsMixed` flag is present and true, buffer increases to +8 sets.
+  const WORKOUT_TARGET = 10;
+  const WORKOUT_OVER_BUFFER = input.setsMixed ? 8 : 5;
+  const workoutDelta = setsLogged - WORKOUT_TARGET;
   const workoutPenalty = Math.max(0, Math.round((12 - result.workoutPoints) * 10) / 10);
-  const workoutInBuffer = workoutDelta > 0 && workoutDelta <= 4;
+  const workoutInBuffer = workoutDelta > 0 && workoutDelta <= WORKOUT_OVER_BUFFER;
   const workoutWarning = setsLogged > 0
     ? workoutDelta > 0
       ? workoutInBuffer
@@ -167,7 +177,8 @@ export function computeAdvancedGoldilocksScores(input: ScoringInputs): AdvancedS
   // Fats analysis (buffer: 30g over target = warning only, beyond = penalty)
   const fatDelta = diet.fat - targetFats;
   const fatPenalty = Math.max(0, Math.round((8 - result.fatPoints) * 10) / 10);
-  const fatInBuffer = fatDelta > 0 && fatDelta <= 30;
+  const FAT_OVER_BUFFER = 30;
+  const fatInBuffer = fatDelta > 0 && fatDelta <= FAT_OVER_BUFFER;
   const fatWarning = diet.fat > 0
     ? fatDelta > 0
       ? fatInBuffer
@@ -210,9 +221,9 @@ export function computeAdvancedGoldilocksScores(input: ScoringInputs): AdvancedS
       points: result.calPoints,
       maxPoints: 25,
       score: result.calScore,
-      penalty: caloriesPenalty,
+      penalty: caloriesInBuffer ? 0 : caloriesPenalty,
       warning: caloriesWarning,
-      isOnTarget: caloriesPenalty === 0,
+      isOnTarget: caloriesInBuffer || caloriesPenalty === 0,
     },
     {
       label: "Protein",
@@ -231,7 +242,7 @@ export function computeAdvancedGoldilocksScores(input: ScoringInputs): AdvancedS
       label: "Workout",
       key: "workout",
       logged: setsLogged,
-      target: 6,
+      target: WORKOUT_TARGET,
       unit: "sets",
       points: result.workoutPoints,
       maxPoints: 12,
@@ -338,31 +349,44 @@ export function computeGoldilocksScores(input: ScoringInputs): ScoringResult {
   }
 
   // Calories (25 points): 1 point per 100 kcal deviation
-  const calPoints = Math.max(0, 25 - (Math.abs(diet.calories - targetCalories) / 100) * 1);
+  let calPoints = 25;
+  const CALORIES_OVER_BUFFER = 300;
+  if (diet.calories > targetCalories) {
+    if (diet.calories <= targetCalories + CALORIES_OVER_BUFFER) {
+      calPoints = 25;
+    } else {
+      calPoints = Math.max(0, 25 - ((diet.calories - (targetCalories + CALORIES_OVER_BUFFER)) / 100));
+    }
+  } else {
+    calPoints = Math.max(0, 25 - ((targetCalories - diet.calories) / 100));
+  }
   const calScore = (calPoints / 25) * 100;
 
-  // Protein (15 points): 1 point per 5g deviation, with a 15g over-protein buffer (warning only, no penalty).
+  // Protein (15 points): 1 point per 5g deviation, with a +20g over-protein buffer (warning only, no penalty).
   let proteinPoints = 15;
+  const PROTEIN_OVER_BUFFER = 20;
   if (diet.protein < targetProtein) {
     proteinPoints = Math.max(0, 15 - ((targetProtein - diet.protein) / 5) * 1);
   } else if (diet.protein > targetProtein) {
-    if (diet.protein <= targetProtein + 15) {
+    if (diet.protein <= targetProtein + PROTEIN_OVER_BUFFER) {
       proteinPoints = 15;
     } else {
-      proteinPoints = Math.max(0, 15 - (((diet.protein - (targetProtein + 15))) / 5) * 1);
+      proteinPoints = Math.max(0, 15 - (((diet.protein - (targetProtein + PROTEIN_OVER_BUFFER))) / 5) * 1);
     }
   }
   const proteinScore = (proteinPoints / 15) * 100;
 
-  // Workout (12 points): 2 points per set deviation, with a +4 sets over-target buffer (warning only, no penalty).
+  // Workout (12 points): 2 points per set deviation, with configurable over-target buffer.
   let workoutPoints = 12;
-  if (setsLogged < 6) {
-    workoutPoints = Math.max(0, 12 - (6 - setsLogged) * 2);
-  } else if (setsLogged > 6) {
-    if (setsLogged <= 6 + 4) {
+  const WORKOUT_TARGET = 10;
+  const WORKOUT_OVER_BUFFER = input.setsMixed ? 8 : 5;
+  if (setsLogged < WORKOUT_TARGET) {
+    workoutPoints = Math.max(0, 12 - (WORKOUT_TARGET - setsLogged) * 2);
+  } else if (setsLogged > WORKOUT_TARGET) {
+    if (setsLogged <= WORKOUT_TARGET + WORKOUT_OVER_BUFFER) {
       workoutPoints = 12;
     } else {
-      workoutPoints = Math.max(0, 12 - ((setsLogged - (6 + 4)) * 2));
+      workoutPoints = Math.max(0, 12 - ((setsLogged - (WORKOUT_TARGET + WORKOUT_OVER_BUFFER)) * 2));
     }
   }
   const workoutScore = (workoutPoints / 12) * 100;
