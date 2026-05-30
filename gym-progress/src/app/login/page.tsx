@@ -114,6 +114,19 @@ function LoginContent() {
       localStorage.setItem("userName", signUpName.trim());
       localStorage.setItem("userEmail", signUpEmail.toLowerCase().trim());
       localStorage.setItem("isLoggedIn", "true");
+      
+      try {
+        const syncRes = await fetch(`/api/sync?email=${encodeURIComponent(signUpEmail.toLowerCase().trim())}`);
+        const syncData = await syncRes.json();
+        if (syncData.ok && syncData.data) {
+          for (const [key, value] of Object.entries(syncData.data)) {
+            localStorage.setItem(key, value as string);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to sync on signup", err);
+      }
+      
       window.location.href = "/";
     } catch (error) {
       console.error("Error verifying OTP:", error);
@@ -145,6 +158,19 @@ function LoginContent() {
       localStorage.setItem("userEmail", data.user.email);
       localStorage.setItem("isLoggedIn", "true");
       localStorage.setItem("userRole", data.user.role);
+
+      try {
+        const syncRes = await fetch(`/api/sync?email=${encodeURIComponent(data.user.email)}`);
+        const syncData = await syncRes.json();
+        if (syncData.ok && syncData.data) {
+          for (const [key, value] of Object.entries(syncData.data)) {
+            localStorage.setItem(key, value as string);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to sync on login", err);
+      }
+
       window.location.href = "/";
     } catch (error) {
       console.error("Login error:", error);

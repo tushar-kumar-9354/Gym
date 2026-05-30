@@ -4,6 +4,7 @@ import "./globals.css";
 import TopNav from "@/components/TopNav";
 import MainWrapper from "@/components/MainWrapper";
 import AccountLockGuard from "@/components/AccountLockGuard";
+import SyncManager from "@/components/SyncManager";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -20,6 +21,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${inter.className} bg-(--background) text-(--foreground) min-h-screen flex flex-col antialiased`}>
+        <SyncManager />
         <AccountLockGuard>
           <TopNav />
           <MainWrapper>
