@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { hashPassword, readUsers, writeUsers, verifyToken } from "@/lib/auth";
+import { hashPassword, readUsers, writeUsers, verifyToken, ensureSeededUsers } from "@/lib/auth";
 
 const AUTH_SECRET = process.env.AUTH_SECRET || "change-me";
 const COOKIE_NAME = "admin_auth";
@@ -24,6 +24,8 @@ function sanitizeUser(user: any) {
 export async function GET() {
   try {
     await requireAdmin();
+    // Ensure DB has the checked-in seed users if empty
+    await ensureSeededUsers();
     const users = await readUsers();
     return NextResponse.json({ ok: true, users: users.map(sanitizeUser) });
   } catch (error) {

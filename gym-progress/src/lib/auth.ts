@@ -17,6 +17,40 @@ export async function readUsers(): Promise<AppUser[]> {
   return stmt.all() as AppUser[];
 }
 
+// If the database is empty, try seeding from a checked-in serverUsers.json file
+export async function ensureSeededUsers(): Promise<void> {
+  try {
+    const users = await readUsers();
+    if (Array.isArray(users) && users.length > 0) return;
+
+    // Attempt to load seed file
+    const path = require('path');
+    const fs = require('fs');
+    const seedPath = path.join(process.cwd(), 'data', 'serverUsers.json');
+    if (!fs.existsSync(seedPath)) return;
+
+    const raw = fs.readFileSync(seedPath, 'utf8');
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed) || parsed.length === 0) return;
+
+    const seeded: AppUser[] = parsed.map((u: any) => ({
+      email: String(u.email || '').toLowerCase().trim(),
+      name: String(u.name || ''),
+      role: (u.role || 'client') as AppUser['role'],
+      passwordHash: String(u.passwordHash || ''),
+      status: (u.status || 'active') as AppUser['status'],
+      validUntil: u.validUntil || new Date().toISOString(),
+      createdAt: u.createdAt || new Date().toISOString(),
+      updatedAt: u.updatedAt || undefined,
+    }));
+
+    await writeUsers(seeded);
+    console.log('Seeded users from data/serverUsers.json');
+  } catch (err) {
+    // non-fatal
+  }
+}
+
 export async function writeUsers(users: AppUser[]): Promise<void> {
   const emailsToKeep = users.map(u => u.email.toLowerCase().trim());
   
