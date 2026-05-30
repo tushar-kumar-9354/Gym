@@ -11,6 +11,8 @@ export interface ScoringInputs {
   sleepQuality?: string | number; // e.g., 'Excellent' | 'Good' | 'Fair' | 'Poor' or numeric percent 0-100
   sleepLogged?: boolean;
   setsLogged: number;
+  // whether any diet entries were logged for the period (true when user logged meals)
+  dietLogged?: boolean;
   setsMixed?: boolean;
   waterIntake: number; // ml
   targetHydration: number; // ml
@@ -71,6 +73,25 @@ export function computeAdvancedGoldilocksScores(input: ScoringInputs): AdvancedS
   };
 
   const hours = parseSleepHours(sleepHours);
+  // If nothing is logged at all, return zeroed scores so UI shows empty bars.
+  const allZero = hours === 0 && diet.calories === 0 && diet.protein === 0 && setsLogged === 0 && waterIntake === 0 && diet.fat === 0;
+  if (allZero) {
+    return {
+      sleepPoints: 0,
+      calPoints: 0,
+      proteinPoints: 0,
+      workoutPoints: 0,
+      waterPoints: 0,
+      fatPoints: 0,
+      sleepScore: 0,
+      calScore: 0,
+      proteinScore: 0,
+      workoutScore: 0,
+      waterScore: 0,
+      fatScore: 0,
+      overallScore: 0,
+    };
+  }
 
   // Sleep analysis (buffer: 1h over target = warning only, beyond = penalty)
   // Quality: Excellent=100%, Good=90%, Fair=75%, Poor=60%
@@ -349,32 +370,48 @@ export function computeGoldilocksScores(input: ScoringInputs): ScoringResult {
   }
 
   // Calories (25 points): 1 point per 100 kcal deviation
-  let calPoints = 25;
+  const dietHasData = typeof input.dietLogged === 'boolean' ? input.dietLogged : (diet.calories > 0 || diet.protein > 0 || diet.fat > 0);
+  let calPoints = 0;
+  let calScore = 0;
   const CALORIES_OVER_BUFFER = 300;
-  if (diet.calories > targetCalories) {
-    if (diet.calories <= targetCalories + CALORIES_OVER_BUFFER) {
-      calPoints = 25;
+  if (dietHasData) {
+    calPoints = 25;
+    if (diet.calories > targetCalories) {
+      if (diet.calories <= targetCalories + CALORIES_OVER_BUFFER) {
+        calPoints = 25;
+      } else {
+        calPoints = Math.max(0, 25 - ((diet.calories - (targetCalories + CALORIES_OVER_BUFFER)) / 100));
+      }
     } else {
-      calPoints = Math.max(0, 25 - ((diet.calories - (targetCalories + CALORIES_OVER_BUFFER)) / 100));
+      calPoints = Math.max(0, 25 - ((targetCalories - diet.calories) / 100));
     }
+    calScore = (calPoints / 25) * 100;
   } else {
-    calPoints = Math.max(0, 25 - ((targetCalories - diet.calories) / 100));
+    // No diet data logged — show empty/zero score instead of penalizing
+    calPoints = 0;
+    calScore = 0;
   }
-  const calScore = (calPoints / 25) * 100;
 
   // Protein (15 points): 1 point per 5g deviation, with a +20g over-protein buffer (warning only, no penalty).
-  let proteinPoints = 15;
+  let proteinPoints = 0;
   const PROTEIN_OVER_BUFFER = 20;
-  if (diet.protein < targetProtein) {
-    proteinPoints = Math.max(0, 15 - ((targetProtein - diet.protein) / 5) * 1);
-  } else if (diet.protein > targetProtein) {
-    if (diet.protein <= targetProtein + PROTEIN_OVER_BUFFER) {
-      proteinPoints = 15;
-    } else {
-      proteinPoints = Math.max(0, 15 - (((diet.protein - (targetProtein + PROTEIN_OVER_BUFFER))) / 5) * 1);
+  let proteinScore = 0;
+  if (dietHasData) {
+    proteinPoints = 15;
+    if (diet.protein < targetProtein) {
+      proteinPoints = Math.max(0, 15 - ((targetProtein - diet.protein) / 5) * 1);
+    } else if (diet.protein > targetProtein) {
+      if (diet.protein <= targetProtein + PROTEIN_OVER_BUFFER) {
+        proteinPoints = 15;
+      } else {
+        proteinPoints = Math.max(0, 15 - (((diet.protein - (targetProtein + PROTEIN_OVER_BUFFER))) / 5) * 1);
+      }
     }
+    proteinScore = (proteinPoints / 15) * 100;
+  } else {
+    proteinPoints = 0;
+    proteinScore = 0;
   }
-  const proteinScore = (proteinPoints / 15) * 100;
 
   // Workout (12 points): 2 points per set deviation, with configurable over-target buffer.
   let workoutPoints = 12;
@@ -405,17 +442,25 @@ export function computeGoldilocksScores(input: ScoringInputs): ScoringResult {
   const waterScore = (waterPoints / 10) * 100;
 
   // Fats (8 points): 1 point per 5g deviation, with a 30g over-fats buffer (warning only, no penalty).
-  let fatPoints = 8;
-  if (diet.fat < targetFats) {
-    fatPoints = Math.max(0, 8 - ((targetFats - diet.fat) / 5) * 1);
-  } else if (diet.fat > targetFats) {
-    if (diet.fat <= targetFats + 30) {
-      fatPoints = 8;
-    } else {
-      fatPoints = Math.max(0, 8 - (((diet.fat - (targetFats + 30))) / 5) * 1);
+  let fatPoints = 0;
+  const FAT_OVER_BUFFER = 30;
+  let fatScore = 0;
+  if (dietHasData) {
+    fatPoints = 8;
+    if (diet.fat < targetFats) {
+      fatPoints = Math.max(0, 8 - ((targetFats - diet.fat) / 5) * 1);
+    } else if (diet.fat > targetFats) {
+      if (diet.fat <= targetFats + FAT_OVER_BUFFER) {
+        fatPoints = 8;
+      } else {
+        fatPoints = Math.max(0, 8 - (((diet.fat - (targetFats + FAT_OVER_BUFFER))) / 5) * 1);
+      }
     }
+    fatScore = (fatPoints / 8) * 100;
+  } else {
+    fatPoints = 0;
+    fatScore = 0;
   }
-  const fatScore = (fatPoints / 8) * 100;
 
   // Overall
   const allZero = hours === 0 && diet.calories === 0 && diet.protein === 0 && setsLogged === 0 && waterIntake === 0 && diet.fat === 0;

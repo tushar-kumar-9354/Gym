@@ -382,7 +382,7 @@ function JourneyContent() {
     }
 
     const currentLogged = JSON.parse(localStorage.getItem(`${userEmail}_${activePlan}_loggedMeals`) || "[]");
-    const loggedMeal = { ...customMeal, date: new Date(selectedDate).toISOString() };
+    const loggedMeal = { ...customMeal, date: new Date(selectedDate).toISOString(), id: `${Date.now()}_${Math.random().toString(36).slice(2,9)}` };
     const updatedLogged = [...currentLogged, loggedMeal];
     localStorage.setItem(`${userEmail}_${activePlan}_loggedMeals`, JSON.stringify(updatedLogged));
     setLoggedMeals(updatedLogged.filter((m: any) => new Date(m.date).toISOString().split('T')[0] === selectedDate));
@@ -402,9 +402,22 @@ function JourneyContent() {
     if (!userEmail || !activePlan) return;
     const allLogged = JSON.parse(localStorage.getItem(`${userEmail}_${activePlan}_loggedMeals`) || "[]");
     const currentMeal = loggedMeals[index];
-    const updated = allLogged.filter((m: any) => m.date !== currentMeal.date || m.name !== currentMeal.name);
-    localStorage.setItem(`${userEmail}_${activePlan}_loggedMeals`, JSON.stringify(updated));
-    setLoggedMeals(updated.filter((m: any) => new Date(m.date).toISOString().split('T')[0] === selectedDate));
+    let removed = false;
+    if (currentMeal && currentMeal.id) {
+      const updated = allLogged.filter((m: any) => m.id !== currentMeal.id);
+      localStorage.setItem(`${userEmail}_${activePlan}_loggedMeals`, JSON.stringify(updated));
+      setLoggedMeals(updated.filter((m: any) => new Date(m.date).toISOString().split('T')[0] === selectedDate));
+      removed = true;
+    }
+    if (!removed) {
+      // fallback: remove only the first matching entry (by fields)
+      const matchIdx = allLogged.findIndex((m: any) => m.date === currentMeal.date && m.name === currentMeal.name && (m.calories || 0) === (currentMeal.calories || 0) && (m.protein || 0) === (currentMeal.protein || 0) && (m.fat || 0) === (currentMeal.fat || 0));
+      if (matchIdx !== -1) {
+        allLogged.splice(matchIdx, 1);
+        localStorage.setItem(`${userEmail}_${activePlan}_loggedMeals`, JSON.stringify(allLogged));
+      }
+      setLoggedMeals(allLogged.filter((m: any) => new Date(m.date).toISOString().split('T')[0] === selectedDate));
+    }
   };
 
   // Exercise Handlers
@@ -528,6 +541,7 @@ function JourneyContent() {
       weight: finalWeight,
       reps: finalReps,
       oneRM: Math.round(finalOneRM * 10) / 10,
+      id: `${Date.now()}_${Math.random().toString(36).slice(2,9)}`,
     };
     const savedLogs = JSON.parse(localStorage.getItem(`${userEmail}_${activePlan}_exerciseLogs`) || "[]");
     const updatedLogs = [...savedLogs, newLog];
@@ -542,9 +556,21 @@ function JourneyContent() {
     if (!userEmail || !activePlan) return;
     const savedLogs = JSON.parse(localStorage.getItem(`${userEmail}_${activePlan}_exerciseLogs`) || "[]");
     const currentLog = exerciseLogs[index];
-    const updated = savedLogs.filter((e: any) => !(e.date === currentLog.date && e.exercise === currentLog.exercise && e.weight === currentLog.weight && e.reps === currentLog.reps));
-    localStorage.setItem(`${userEmail}_${activePlan}_exerciseLogs`, JSON.stringify(updated));
-    setExerciseLogs(updated.filter((e: any) => new Date(e.date).toISOString().split('T')[0] === selectedDate));
+    let removed = false;
+    if (currentLog && currentLog.id) {
+      const updated = savedLogs.filter((e: any) => e.id !== currentLog.id);
+      localStorage.setItem(`${userEmail}_${activePlan}_exerciseLogs`, JSON.stringify(updated));
+      setExerciseLogs(updated.filter((e: any) => new Date(e.date).toISOString().split('T')[0] === selectedDate));
+      removed = true;
+    }
+    if (!removed) {
+      const matchIdx = savedLogs.findIndex((e: any) => e.date === currentLog.date && e.exercise === currentLog.exercise && e.weight === currentLog.weight && e.reps === currentLog.reps);
+      if (matchIdx !== -1) {
+        savedLogs.splice(matchIdx, 1);
+        localStorage.setItem(`${userEmail}_${activePlan}_exerciseLogs`, JSON.stringify(savedLogs));
+      }
+      setExerciseLogs(savedLogs.filter((e: any) => new Date(e.date).toISOString().split('T')[0] === selectedDate));
+    }
   };
 
   // Water Handlers
@@ -692,6 +718,7 @@ function JourneyContent() {
     sleepTarget: effectiveSleepTarget,
     sleepQuality: weightedQualityPct ?? undefined,
     sleepLogged: (weightedSleepHours || 0) > 0,
+    dietLogged: (currentDiet.calories || 0) > 0 || (currentDiet.protein || 0) > 0 || (currentDiet.fat || 0) > 0,
     setsLogged: exerciseLogs.length,
     setsMixed: (() => {
       const counts: { [key: string]: number } = {};
@@ -869,7 +896,7 @@ function JourneyContent() {
                 </div>
 
                 {/* Per-metric rows */}
-                {scoring.analysis.map((item) => {
+                {scoring?.analysis?.map((item) => {
                   const colorMap: Record<string, string> = {
                     sleep: "bg-purple-500",
                     calories: "bg-orange-400",

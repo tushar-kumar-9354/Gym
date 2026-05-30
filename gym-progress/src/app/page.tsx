@@ -784,7 +784,7 @@ export default function Dashboard() {
   let sleepQualityDeduction = 0;
   const todaySleepEntry = sleepLogs[todayStr];
   let currentSleep = 0;
-  let currentSleepQuality = "Good";
+  let currentSleepQuality: string | number = "Good";
   if (Array.isArray(todaySleepEntry)) {
     // compute total hours and weighted quality percentage
     const qualityMap: Record<string, number> = { Excellent: 100, Good: 90, Fair: 75, Poor: 60 };
@@ -806,20 +806,53 @@ export default function Dashboard() {
   }
 
   // Use centralized scoring helper so Dashboard and Journey match exactly
-  const scoringResult = computeAdvancedGoldilocksScores({
-    diet: { calories: currentCalories, protein: currentProtein, fat: currentFats },
-    sleepHours: currentSleep,
-    sleepTarget: sleepTargetVal,
-    sleepQuality: typeof currentSleepQuality === 'number' ? currentSleepQuality : currentSleepQuality,
-    sleepLogged: !!todaySleepEntry,
-    setsLogged: setsLoggedToday,
-    setsMixed: setsMixedToday,
-    waterIntake: loggedWater,
-    targetHydration,
-    targetCalories,
-    targetProtein,
-    targetFats,
-  });
+  const defaultAnalysis = [
+    { label: "Sleep", key: "sleep", logged: 0, target: sleepTargetVal, unit: "h", points: 0, maxPoints: 30, score: 0, penalty: 0, warning: "No data", isOnTarget: false },
+    { label: "Calories", key: "calories", logged: 0, target: targetCalories, unit: "kcal", points: 0, maxPoints: 25, score: 0, penalty: 0, warning: "No data", isOnTarget: false },
+    { label: "Protein", key: "protein", logged: 0, target: targetProtein, unit: "g", points: 0, maxPoints: 15, score: 0, penalty: 0, warning: "No data", isOnTarget: false },
+    { label: "Workout", key: "workout", logged: 0, target: 10, unit: "sets", points: 0, maxPoints: 12, score: 0, penalty: 0, warning: "No data", isOnTarget: false },
+    { label: "Hydration", key: "hydration", logged: 0, target: targetHydration, unit: "ml", points: 0, maxPoints: 10, score: 0, penalty: 0, warning: "No data", isOnTarget: false },
+    { label: "Fats", key: "fats", logged: 0, target: targetFats, unit: "g", points: 0, maxPoints: 8, score: 0, penalty: 0, warning: "No data", isOnTarget: false },
+  ];
+
+  const defaultScoringResult = {
+    sleepPoints: 0,
+    calPoints: 0,
+    proteinPoints: 0,
+    workoutPoints: 0,
+    waterPoints: 0,
+    fatPoints: 0,
+    sleepScore: 0,
+    calScore: 0,
+    proteinScore: 0,
+    workoutScore: 0,
+    waterScore: 0,
+    fatScore: 0,
+    overallScore: 0,
+    analysis: defaultAnalysis,
+  } as const;
+
+  let scoringResult = defaultScoringResult as any;
+  try {
+    scoringResult = computeAdvancedGoldilocksScores({
+      diet: { calories: currentCalories, protein: currentProtein, fat: currentFats },
+      sleepHours: currentSleep,
+      sleepTarget: sleepTargetVal,
+      sleepQuality: typeof currentSleepQuality === 'number' ? currentSleepQuality : currentSleepQuality,
+      sleepLogged: !!todaySleepEntry,
+      dietLogged: effectiveMeals.length > 0,
+      setsLogged: setsLoggedToday,
+      setsMixed: setsMixedToday,
+      waterIntake: loggedWater,
+      targetHydration,
+      targetCalories,
+      targetProtein,
+      targetFats,
+    });
+  } catch (err) {
+    console.error('Scoring computation failed:', err);
+    scoringResult = defaultScoringResult as any;
+  }
 
   const allMetricsZero =
     currentSleep === 0 &&
@@ -833,7 +866,7 @@ export default function Dashboard() {
 
   // Build warnings list from centralized analysis helper outputs!
   const warningsList: { metric: string; msg: string; severity: "warning" | "penalty" }[] = [];
-  scoringResult.analysis.forEach(item => {
+  (scoringResult.analysis || []).forEach((item: any) => {
     if (item.penalty > 0) {
       // Beyond buffer → real penalty
       warningsList.push({
@@ -1313,7 +1346,7 @@ export default function Dashboard() {
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
-                    {scoringResult.analysis.map((item) => {
+                    {(scoringResult.analysis || []).map((item: any) => {
                       const iconsMap: Record<string, React.ReactNode> = {
                         sleep: <Moon size={16} />,
                         calories: <Coffee size={16} />,

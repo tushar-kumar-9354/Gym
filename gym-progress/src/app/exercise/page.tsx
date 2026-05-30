@@ -120,6 +120,7 @@ function ExerciseContent() {
       reps: finalReps,
       setNumber: nextSetNumber,
       oneRM: Math.round(finalOneRM * 10) / 10,
+      id: `${Date.now()}_${Math.random().toString(36).slice(2,9)}`,
     };
 
     const updatedLogs = [...logs, newLog];
@@ -133,13 +134,16 @@ function ExerciseContent() {
 
   const handleRemoveLog = (logToRemove: any) => {
     if (!userEmail || !activePlan) return;
-    // Remove the specific set entry
-    const updated = logs.filter(l => !(
-      l.date === logToRemove.date &&
-      l.exercise === logToRemove.exercise &&
-      l.bodyPart === logToRemove.bodyPart &&
-      l.setNumber === logToRemove.setNumber
-    ));
+    let updated = logs;
+    if (logToRemove && logToRemove.id) {
+      updated = logs.filter(l => l.id !== logToRemove.id);
+    } else {
+      const idx = logs.findIndex(l => l.date === logToRemove.date && l.exercise === logToRemove.exercise && l.bodyPart === logToRemove.bodyPart && l.setNumber === logToRemove.setNumber);
+      if (idx !== -1) {
+        updated = [...logs];
+        updated.splice(idx, 1);
+      }
+    }
     // Re-number the sets for this exercise on this day
     let setCounter = 0;
     const renumbered = updated.map(l => {

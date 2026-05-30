@@ -110,7 +110,7 @@ function DietContent() {
     }
     
     const currentLogged = JSON.parse(localStorage.getItem(`${userEmail}_${activePlan}_loggedMeals`) || "[]");
-    const newMeal = { ...food, date: new Date(date).toISOString() };
+    const newMeal = { ...food, date: new Date(date).toISOString(), id: `${Date.now()}_${Math.random().toString(36).slice(2,9)}` };
     const updated = [...currentLogged, newMeal];
     
     localStorage.setItem(`${userEmail}_${activePlan}_loggedMeals`, JSON.stringify(updated));
@@ -132,6 +132,7 @@ function DietContent() {
       carbs: parseFloat(carbs) || 0,
       fat: parseFloat(fat) || 0,
       date: new Date(date).toISOString(),
+      id: `${Date.now()}_${Math.random().toString(36).slice(2,9)}`,
     };
 
     const currentLogged = JSON.parse(localStorage.getItem(`${userEmail}_${activePlan}_loggedMeals`) || "[]");
@@ -158,10 +159,23 @@ function DietContent() {
     const allLogged = JSON.parse(localStorage.getItem(`${userEmail}_${activePlan}_loggedMeals`) || "[]");
     const currentMeal = loggedMeals[index];
     
-    const updated = allLogged.filter((m: any) => m.date !== currentMeal.date || m.name !== currentMeal.name);
-    
-    localStorage.setItem(`${userEmail}_${activePlan}_loggedMeals`, JSON.stringify(updated));
-    setLoggedMeals(updated.filter((m: any) => {
+    if (currentMeal && currentMeal.id) {
+      const updated = allLogged.filter((m: any) => m.id !== currentMeal.id);
+      localStorage.setItem(`${userEmail}_${activePlan}_loggedMeals`, JSON.stringify(updated));
+      setLoggedMeals(updated.filter((m: any) => {
+        const mDate = new Date(m.date).toISOString().split('T')[0];
+        return mDate === date;
+      }));
+      return;
+    }
+
+    // fallback: remove only the first matching instance
+    const matchIdx = allLogged.findIndex((m: any) => m.date === currentMeal.date && m.name === currentMeal.name && (m.calories || 0) === (currentMeal.calories || 0));
+    if (matchIdx !== -1) {
+      allLogged.splice(matchIdx, 1);
+      localStorage.setItem(`${userEmail}_${activePlan}_loggedMeals`, JSON.stringify(allLogged));
+    }
+    setLoggedMeals(allLogged.filter((m: any) => {
       const mDate = new Date(m.date).toISOString().split('T')[0];
       return mDate === date;
     }));
