@@ -974,7 +974,7 @@ function JourneyContent() {
                       : ` ⚠️ Target is ${effectiveSleepTarget}h`}
                   </div>
                 ) : null}
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-medium text-gray-500 mb-1">Hours Slept</label>
                     <input
@@ -1307,7 +1307,7 @@ function JourneyContent() {
 
               <form onSubmit={handleAddLog} className="space-y-4 border-t border-gray-50 pt-3">
                 {getExerciseTrackingType(exercise, bodyPart) === "Time" ? (
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Minutes</label>
                       <input type="number" min="0" value={minutes} onChange={(e) => setMinutes(e.target.value)} placeholder="e.g. 2" required className="w-full bg-white border border-gray-100 rounded-2xl py-2.5 px-3 text-sm text-gray-900 focus:outline-none focus:border-blue-500" />
@@ -1318,7 +1318,7 @@ function JourneyContent() {
                     </div>
                   </div>
                 ) : getExerciseTrackingType(exercise, bodyPart) === "Reps" ? (
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Weight (optional)</label>
                       <input type="number" step="any" value={weight} onChange={(e) => setWeight(e.target.value)} placeholder="Bodyweight" className="w-full bg-white border border-gray-100 rounded-2xl py-2.5 px-3 text-sm text-gray-900 focus:outline-none focus:border-blue-500" />
@@ -1340,7 +1340,7 @@ function JourneyContent() {
                     </div>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Weight (kg)</label>
                       <input type="number" step="any" value={weight} onChange={(e) => setWeight(e.target.value)} placeholder="0" required className="w-full bg-white border border-gray-100 rounded-2xl py-2.5 px-3 text-sm text-gray-900 focus:outline-none focus:border-blue-500" />

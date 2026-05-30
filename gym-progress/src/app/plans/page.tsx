@@ -224,7 +224,7 @@ export default function Plans() {
               setDuration("3");
               setShowForm(true);
             }}
-            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-2xl flex items-center gap-2 text-sm font-medium transition-colors shadow-sm"
+            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-2xl flex items-center gap-2 text-sm font-medium transition-colors shadow-sm touch-target"
           >
             <Plus size={18} /> Create New Plan
           </button>
@@ -263,7 +263,7 @@ export default function Plans() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Current Weight (kg)</label>
                 <input 
@@ -292,7 +292,7 @@ export default function Plans() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Goal Weight (kg)</label>
                 <input 
@@ -349,7 +349,7 @@ export default function Plans() {
             </div>
 
             {/* Activity Level + Sleep Target */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Activity Level</label>
                 <select

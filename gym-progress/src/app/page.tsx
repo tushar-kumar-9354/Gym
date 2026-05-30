@@ -1293,7 +1293,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mt-6 border-t border-gray-50 pt-4">
+            <div className="grid grid-cols-1 md:grid-cols-6 gap-4 mt-6 border-t border-gray-50 pt-4">
               <div className="text-center">
                 <span className="text-xs text-gray-500 flex items-center justify-center gap-1"><Moon size={12} /> Sleep (30%)</span>
                 <p className="font-bold text-gray-900 mt-1">{currentSleep} / {sleepTarget}h</p>
@@ -1751,7 +1751,7 @@ export default function Dashboard() {
 
                       <div className="space-y-2 pt-2">
                         <div className="h-3 bg-amber-200/40 rounded-md w-1/3"></div>
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                           <div className="h-10 bg-white/70 rounded-lg border border-amber-50"></div>
                           <div className="h-10 bg-white/70 rounded-lg border border-amber-50"></div>
                           <div className="h-10 bg-white/70 rounded-lg border border-amber-50"></div>
@@ -1795,7 +1795,7 @@ export default function Dashboard() {
 
                             <div className="space-y-2">
                               <h4 className="text-xs font-bold text-amber-950 uppercase tracking-wider">Proposed Daily Targets</h4>
-                              <div className="grid grid-cols-2 gap-2 text-xs">
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
                                 <div className="bg-white p-2 rounded-lg border border-amber-100/50">
                                   <span className="text-gray-500 block">Calories</span>
                                   <span className="font-bold text-amber-900">{aiRecommendation.targets.calories} kcal</span>

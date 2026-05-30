@@ -294,7 +294,8 @@ export default function TopNav() {
             {/* Mobile Menu Button */}
             <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              className="md:hidden text-gray-600 hover:text-blue-500 focus:outline-none"
+              aria-label={isMobileMenuOpen ? "Close menu" : "Open menu"}
+              className="md:hidden text-gray-600 hover:text-blue-500 focus:outline-none touch-target"
             >
               {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
             </button>

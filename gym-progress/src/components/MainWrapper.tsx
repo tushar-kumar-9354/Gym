@@ -10,7 +10,9 @@ export default function MainWrapper({ children }: { children: React.ReactNode })
   return (
     <main className={`flex-1 min-h-screen transition-all ${isAuthPage ? 'p-0' : 'pt-16'}`}>
       <div className="w-full">
-        {children}
+        <div className="container">
+          {children}
+        </div>
       </div>
     </main>
   );

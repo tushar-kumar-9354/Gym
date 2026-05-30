@@ -258,7 +258,7 @@ function ExerciseContent() {
               </div>
 
               {getExerciseTrackingType(exercise, bodyPart) === "Time" ? (
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Minutes</label>
                     <input
@@ -286,7 +286,7 @@ function ExerciseContent() {
                   </div>
                 </div>
               ) : getExerciseTrackingType(exercise, bodyPart) === "Reps" ? (
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Weight (optional)</label>
                     <input
@@ -310,7 +310,7 @@ function ExerciseContent() {
                   </div>
                 </div>
               ) : (
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Weight (kg)</label>
                     <input

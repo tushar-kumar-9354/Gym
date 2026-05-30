@@ -120,7 +120,7 @@ export default function DayDetail({ params }: { params: { dayIndex: string } }) 
             <h1 className="text-xl font-bold">Daily Summary — {dayData.date}</h1>
           </div>
 
-          <div className="grid grid-cols-2 gap-4 text-sm text-gray-700 mb-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-700 mb-4">
             <div className="bg-gray-50 p-3 rounded-lg border border-gray-100">
               <div className="text-xs text-gray-500">Score</div>
               <div className="font-bold text-lg">{dayData.score}%</div>

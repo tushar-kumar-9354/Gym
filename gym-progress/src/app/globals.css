@@ -33,6 +33,40 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Mobile-first base font sizing */
+:root {
+  font-size: 14px;
+}
+@media (min-width: 640px) {
+  :root { font-size: 15px; }
+}
+@media (min-width: 1024px) {
+  :root { font-size: 16px; }
+}
+
+/* Central responsive container used across pages */
+.container {
+  width: 100%;
+  max-width: 1100px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+/* Make wide tables and charts scrollable on small screens */
+.responsive-table,
+.responsive-chart {
+  width: 100%;
+  overflow-x: auto;
+}
+
+/* Larger touch targets for mobile buttons */
+.touch-target {
+  padding: 12px 14px !important;
+  border-radius: 10px;
+}
+
 .glass-panel {
   background: rgba(255, 255, 255, 0.8);
   backdrop-filter: blur(12px);
