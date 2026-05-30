@@ -1,8 +1,5 @@
-import fs from "fs/promises";
-import path from "path";
 import crypto from "crypto";
-
-const USERS_FILE = path.join(process.cwd(), "data", "serverUsers.json");
+import db from "./db";
 
 export type AppUser = {
   email: string;
@@ -16,23 +13,28 @@ export type AppUser = {
 };
 
 export async function readUsers(): Promise<AppUser[]> {
-  try {
-    const raw = await fs.readFile(USERS_FILE, "utf8");
-    const parsed = JSON.parse(raw || "[]");
-    // Handle both plain array and { users: [] } formats
-    if (Array.isArray(parsed)) return parsed;
-    if (parsed && Array.isArray(parsed.users)) return parsed.users;
-    return [];
-  } catch (error) {
-    await fs.mkdir(path.join(process.cwd(), "data"), { recursive: true });
-    await fs.writeFile(USERS_FILE, "[]", "utf8");
-    return [];
-  }
+  const stmt = db.prepare('SELECT * FROM users');
+  return stmt.all() as AppUser[];
 }
 
-export async function writeUsers(users: AppUser[]) {
-  await fs.mkdir(path.join(process.cwd(), "data"), { recursive: true });
-  await fs.writeFile(USERS_FILE, JSON.stringify(users, null, 2), "utf8");
+export async function writeUsers(users: AppUser[]): Promise<void> {
+  const deleteStmt = db.prepare('DELETE FROM users');
+  const insertStmt = db.prepare(`
+    INSERT INTO users (email, name, role, passwordHash, status, validUntil, createdAt, updatedAt)
+    VALUES (@email, @name, @role, @passwordHash, @status, @validUntil, @createdAt, @updatedAt)
+  `);
+
+  const transaction = db.transaction((usersToInsert: AppUser[]) => {
+    deleteStmt.run();
+    for (const user of usersToInsert) {
+      insertStmt.run({
+        ...user,
+        updatedAt: user.updatedAt || null
+      });
+    }
+  });
+
+  transaction(users);
 }
 
 export function hashPassword(password: string) {

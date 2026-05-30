@@ -1,8 +1,4 @@
-import * as fs from "fs";
-import * as path from "path";
-
-const dataDir = path.resolve(process.cwd(), "data");
-const syncDataFile = path.join(dataDir, "syncData.json");
+import db from "./db";
 
 export interface SyncData {
   [email: string]: {
@@ -11,50 +7,20 @@ export interface SyncData {
 }
 
 /**
- * Ensures the data directory and sync file exist.
- */
-function ensureSyncDataFile() {
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
-  }
-  if (!fs.existsSync(syncDataFile)) {
-    fs.writeFileSync(syncDataFile, JSON.stringify({}, null, 2), "utf8");
-  }
-}
-
-/**
- * Reads all sync data.
- */
-export async function readSyncData(): Promise<SyncData> {
-  ensureSyncDataFile();
-  try {
-    const raw = fs.readFileSync(syncDataFile, "utf8");
-    return JSON.parse(raw);
-  } catch (error) {
-    console.error("Failed to read syncData.json", error);
-    return {};
-  }
-}
-
-/**
- * Writes all sync data.
- */
-export async function writeSyncData(data: SyncData): Promise<void> {
-  ensureSyncDataFile();
-  try {
-    fs.writeFileSync(syncDataFile, JSON.stringify(data, null, 2), "utf8");
-  } catch (error) {
-    console.error("Failed to write syncData.json", error);
-  }
-}
-
-/**
  * Gets sync data for a specific user.
  */
 export async function getUserSyncData(email: string): Promise<{ [key: string]: string }> {
-  const allData = await readSyncData();
   const normalizedEmail = email.toLowerCase().trim();
-  return allData[normalizedEmail] || {};
+  
+  const stmt = db.prepare('SELECT key, value FROM sync_data WHERE email = ?');
+  const rows = stmt.all(normalizedEmail) as { key: string, value: string }[];
+  
+  const result: { [key: string]: string } = {};
+  for (const row of rows) {
+    result[row.key] = row.value;
+  }
+  
+  return result;
 }
 
 /**
@@ -65,26 +31,34 @@ export async function updateUserSyncData(
   updates: { [key: string]: string },
   removals: string[]
 ): Promise<void> {
-  const allData = await readSyncData();
   const normalizedEmail = email.toLowerCase().trim();
   
-  if (!allData[normalizedEmail]) {
-    allData[normalizedEmail] = {};
-  }
+  const deleteStmt = db.prepare('DELETE FROM sync_data WHERE email = ? AND key = ?');
+  const insertStmt = db.prepare(`
+    INSERT INTO sync_data (email, key, value) 
+    VALUES (@email, @key, @value) 
+    ON CONFLICT(email, key) DO UPDATE SET value=excluded.value
+  `);
 
-  // Apply removals
-  if (removals && Array.isArray(removals)) {
-    for (const key of removals) {
-      delete allData[normalizedEmail][key];
+  const transaction = db.transaction(() => {
+    // Apply removals
+    if (removals && Array.isArray(removals)) {
+      for (const key of removals) {
+        deleteStmt.run(normalizedEmail, key);
+      }
     }
-  }
 
-  // Apply updates
-  if (updates && typeof updates === "object") {
-    for (const [key, value] of Object.entries(updates)) {
-      allData[normalizedEmail][key] = value;
+    // Apply updates
+    if (updates && typeof updates === "object") {
+      for (const [key, value] of Object.entries(updates)) {
+        insertStmt.run({
+          email: normalizedEmail,
+          key: key,
+          value: value
+        });
+      }
     }
-  }
+  });
 
-  await writeSyncData(allData);
+  transaction();
 }

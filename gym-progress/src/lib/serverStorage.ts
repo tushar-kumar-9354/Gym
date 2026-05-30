@@ -1,16 +1,13 @@
-import * as fs from "fs";
-import * as path from "path";
+import db from "./db";
 
 /**
- * Delete the entire data folder on the server, removing all persisted user records.
+ * Reset all user data by deleting everything from the SQLite database.
  */
 export async function resetAllUserData(): Promise<void> {
-  const dataDir = path.resolve(process.cwd(), "data");
-  if (fs.existsSync(dataDir)) {
-    fs.rmSync(dataDir, { recursive: true, force: true });
-  }
-  // Re‑create an empty folder with an empty serverUsers.json to avoid missing file errors.
-  fs.mkdirSync(dataDir, { recursive: true });
-  const emptyUsersPath = path.join(dataDir, "serverUsers.json");
-  fs.writeFileSync(emptyUsersPath, JSON.stringify([], null, 2));
+  const transaction = db.transaction(() => {
+    db.prepare('DELETE FROM sync_data').run();
+    db.prepare('DELETE FROM users').run();
+  });
+  
+  transaction();
 }
