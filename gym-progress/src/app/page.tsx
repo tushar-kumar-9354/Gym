@@ -1308,7 +1308,7 @@ export default function Dashboard() {
               </div>
               <div className="text-center">
                 <span className="text-xs text-gray-500 flex items-center justify-center gap-1"><Dumbbell size={12} /> Workout (12%)</span>
-                <p className="font-bold text-gray-900 mt-1">{setsLoggedToday} / 6 sets</p>
+                <p className="font-bold text-gray-900 mt-1">{setsLoggedToday} / 10 sets</p>
               </div>
               <div className="text-center">
                 <span className="text-xs text-gray-500 flex items-center justify-center gap-1"><Droplets size={12} /> Hydration (10%)</span>
