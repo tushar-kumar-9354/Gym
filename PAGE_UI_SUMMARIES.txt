@@ -1,0 +1,143 @@
+UI Page Summaries (Ordered Sections)
+
+Dashboard — File: src/app/page.tsx
+1. Header: "Welcome Back, {userName}" + subtext
+2. Plan selector / CTA: active plan pill, plan dropdown, No Active Plan CTA
+3. Plan completed banner (conditional)
+4. Algorithmic Progress Depth: score ring, score subtext, helper text
+5. Score Metrics Grid: Sleep / Calories / Protein / Workout / Hydration / Fats
+6. Penalty Breakdown: "View Penalty Breakdown 🔍" → expandable panel
+7. Weight alert / suggestion banner
+8. Three-column topic grid:
+   - Daily Diet Details (progress bars; hydration quick actions +250ml/+500ml; Undo Meal)
+   - Exercise Overview (body-part/exercise selects, current 1RM, lift stats)
+   - Weight Progress (current vs goal, weekly progress, next weigh-in countdown)
+9. AI Recommendation / Routine: AI banner, hydration guidance, tips, Confirm & Apply
+10. Logged Sets Overview: Yesterday/Today toggle → sets list or empty-state CTA
+11. Charts: Goal Trajectory (weight) and Strength Trajectory
+12. Completion modal (conditional)
+
+Daily Exercise — File: src/app/exercise/page.tsx
+1. Header: "Daily Exercise" + date picker / plan pill
+2. No-plan CTA (if no active plan)
+3. Main grid:
+   - Left: Log Workout form (body part, exercise, weight/reps/time inputs, Add Set)
+   - Right: Chart & history
+4. Strength calculator (1RM) / chart
+5. Recent workouts: filter buttons + grouped workout list
+
+Daily Diet Log — File: src/app/diet/page.tsx
+1. Header: "Daily Diet Log" + plan/date/custom meal CTA
+2. No-plan CTA
+3. Layout grid:
+   - Left: Daily Summary (progress bars for Calories, Protein, etc.) + Search Food Chart
+   - Right: Logged Meals list with per-item remove and totals
+4. Custom meal form (modal/inline when triggered)
+
+Daily Routine Planner — File: src/app/daily-routine/page.tsx
+1. Header: "Daily Routine Planner" + plan selector
+2. No-plan CTA
+3. Plan Target Summary: weight target, calories, protein/fats, water, sleep, activity
+4. AI Personalization / Profile (diet preference, experience, timings) + Save
+5. AI Routine area: loading → AI summary banner → Hydration guidance
+6. 24-hour cumulative goal trajectory chart
+7. Timetable: vertical timeline (time • activity • description)
+8. Actionable AI tips and Generate/Regenerate CTA
+
+Journey — File: src/app/journey/page.tsx
+1. Header: "Your Fitness Journey" + plan pill / weigh-in countdown
+2. Timeline / date selector (horizontal scroller)
+3. Day Analysis: overall daily score + per-metric mini-rows (sleep, calories, protein, workout, hydration, fats)
+4. Sleep & Recovery card: sleep logs, delete/undo
+5. Diet: logged meals, search & add, custom meal form
+6. Exercise logging: add sets, body-part/exercise inputs
+7. Water quick actions & history (+250/+500ml)
+8. AI routine / tips / save
+
+Admin Panel — File: src/app/admin/page.tsx
+1. Header: Super Admin Panel
+2. AdminPanel component renders main controls
+
+Admin Login — File: src/app/admin/login/page.tsx
+1. Header: Super Admin Login
+2. Login form: username + password + submit, error feedback
+
+Completed Plan — File: src/app/completed-plan/page.tsx
+1. Header / back link
+2. Celebration hero (trophy) + summary text
+3. Outcome tiles: start / current / goal weight
+4. Visual trajectory chart (weight)
+5. AI story / report card + generated narrative
+6. Stats tiles, dataset breakdown, export actions
+
+Food Chart — File: src/app/food-chart/page.tsx
+1. Header + description
+2. Search bar
+3. Results table: food items with calories/macros + Log action
+4. Add custom meal form (toggleable)
+
+Goals & Body Progress — File: src/app/goals/page.tsx
+1. Header: Goals & Body Progress
+2. Active plan card (name, duration, start/end, progress)
+3. Log weight form
+4. Weight trajectory chart (actual vs target)
+5. Milestones section
+
+Badges / Achievements — File: src/app/achievements/badges/page.tsx
+1. Header / profile summary
+2. Tabs: All / Unlocked / Locked
+3. Badge grid with detail modal
+4. Unlock notifications / confetti toasts
+
+Leaderboard — File: src/app/leaderboard/page.tsx
+1. Header: Community Leaderboard
+2. Leaderboard table: rank, member, plan, avg score, days tracked, badges
+
+Strength Tracker — File: src/app/strength/page.tsx
+1. Header: Strength Lab & 1RM Analytics
+2. Category tabs (body parts)
+3. Exercise selector + chart controls
+4. Strength chart (1RM / reps) and filters
+5. Exercise summary: personal bests, lightest/highest/average
+6. Logged sets list grouped by date
+
+Your Metrics — File: src/app/info/page.tsx
+1. Header: Your Metrics
+2. Metric cards: weight, height, BMI
+3. Scientific baselines: BMR, TDEE, LBM, hydration target
+4. Monthly body metrics form
+
+Login / Sign-up — File: src/app/login/page.tsx
+1. Header: app title + description
+2. Tab toggle: Log In / Sign Up
+3. Sign-up form: name / email / password
+4. Login form: identifier / password
+5. Reset / banner states
+
+Day Report Detail — File: src/app/reports/[dayIndex]/page.tsx
+1. Header / back link
+2. Top summary tiles: score / weight / date / diet snapshot
+3. Macro breakdown: sleep, calories, protein, workout, hydration, fats
+4. Exercises section: list of exercises, sets, best metrics
+5. Notes section
+
+Reports / Export — File: src/app/reports/page.tsx
+1. Header: Reports & AI Export
+2. Export actions: Download TXT / JSON, Generate Weekly AI Report
+3. Quick stats / personal bests
+4. AI weekly analysis panel
+
+Visualise (Charts) — File: src/app/visualise/page.tsx
+1. Header: Visualise
+2. Weight trajectory: actual vs target
+3. Macro doughnut / calorie adherence / water trend
+4. Body part distribution / top foods panels
+5. Strength trajectory (selectable)
+
+Plans — File: src/app/plans/page.tsx
+1. Header: Plans + Create New Plan CTA
+2. Plan list or create/edit form
+3. Plan form fields: name, weight, goal weight, duration, activity, sleep target, start date
+4. Plan actions: start, edit, delete
+
+End of summaries.
