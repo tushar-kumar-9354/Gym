@@ -22,3 +22,5 @@ ai report more deatils... add
 wokout alos calculated 
 report update(delete if mistakenly add)
 AI Personalization & Profile Recordmore detailin time table page.
+warm up and cool down also after gym 
+workout complete button (msg like do this for tomorrow )

@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Dumbbell, Utensils, Target, Calendar, User, BarChart2, ChevronDown, Menu, X, LogOut, FileBarChart, Trophy, Medal } from "lucide-react";
+import { Dumbbell, Utensils, Target, Calendar, User, BarChart2, ChevronDown, Menu, X, LogOut, FileBarChart, Trophy, Medal, Wrench } from "lucide-react";
 
 export default function TopNav() {
   const pathname = usePathname();
@@ -85,6 +85,7 @@ export default function TopNav() {
     { name: "Plan Details", href: "/plans", icon: Target },
     { name: "Your Metrics", href: "/info", icon: User },
     { name: "AI Reports", href: "/reports", icon: FileBarChart },
+    { name: "FIXES", href: "/fixes", icon: Wrench },
   ];
 
   return (
