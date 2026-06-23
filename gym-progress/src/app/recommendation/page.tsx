@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Sparkles, Trophy, Utensils, Zap, Award, RefreshCw, AlertCircle, TrendingUp, Calendar, Check, Info } from "lucide-react";
+import { Sparkles, Trophy, Utensils, Zap, Award, RefreshCw, AlertCircle, Calendar, Info, Check } from "lucide-react";
 
 interface MacroRatio {
   date: string;
@@ -72,12 +72,10 @@ export default function RecommendationPage() {
     setError(null);
     setIsUsingMock(useMockData);
 
-    // Prepare reports and meals
     let reportsToSubmit = dailyReports;
     let mealsToSubmit = loggedMeals;
 
     if (useMockData || dailyReports.length === 0) {
-      // Seed high quality mock data for presentation
       reportsToSubmit = [
         {
           date: "Mon, Jun 22",
@@ -238,241 +236,225 @@ export default function RecommendationPage() {
   const hasNoData = dailyReports.length === 0;
 
   return (
-    <div className="min-h-screen bg-slate-50/50 dark:bg-slate-900/20 py-8 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-6xl mx-auto">
+    <div className="w-full px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+      
+      {/* Structured Header */}
+      <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-gray-100 pb-5">
+        <div>
+          <h1 className="text-2xl font-black text-gray-900 tracking-tight flex items-center gap-2">
+            <span className="bg-blue-500 w-2.5 h-6 rounded-full inline-block"></span>
+            AI RECOMMENDATIONS
+          </h1>
+          <p className="text-xs text-gray-500 mt-1">
+            Cross-analyzes your food, macro, and exercise metrics starting from Day 1 to suggest target foods and optimal workout setups.
+          </p>
+        </div>
         
-        {/* Banner Block */}
-        <div className="relative mb-8 p-6 sm:p-8 rounded-3xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-700 text-white shadow-xl overflow-hidden">
-          <div className="absolute right-0 bottom-0 opacity-15 transform translate-x-12 translate-y-12">
-            <Sparkles size={280} />
-          </div>
-          <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+        <div className="flex gap-2.5 shrink-0">
+          {hasNoData && (
+            <button
+              onClick={handleSeedMockToStorage}
+              className="bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 text-xs font-semibold px-4 py-2.5 rounded-xl transition-all cursor-pointer"
+            >
+              Seed Demo Data
+            </button>
+          )}
+          <button
+            onClick={() => handleGenerate(false)}
+            disabled={loading || (hasNoData && !isUsingMock)}
+            className="bg-blue-500 hover:bg-blue-600 disabled:bg-gray-100 disabled:text-gray-400 text-white text-xs font-bold px-5 py-2.5 rounded-xl transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
+          >
+            {loading ? (
+              <>
+                <RefreshCw className="animate-spin" size={13} />
+                Analyzing Day 1...
+              </>
+            ) : (
+              <>
+                <Sparkles size={13} />
+                Generate AI Recommendations
+              </>
+            )}
+          </button>
+        </div>
+      </header>
+
+      {/* Info Warning when empty */}
+      {hasNoData && !recommendations && !loading && (
+        <div className="bg-blue-50/50 p-6 rounded-3xl border border-blue-100 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div className="flex gap-3.5 items-start">
+            <div className="bg-blue-50 p-3 rounded-2xl text-blue-500 border border-blue-100 shrink-0">
+              <Info size={24} />
+            </div>
             <div>
-              <div className="flex items-center gap-2 mb-2 bg-white/20 backdrop-blur-md px-3 py-1 rounded-full w-fit">
-                <Sparkles size={14} className="text-amber-300 animate-pulse" />
-                <span className="text-[10px] font-bold tracking-wider uppercase text-amber-200">AI Engine</span>
-              </div>
-              <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">AI Recommendations</h1>
-              <p className="mt-2 text-indigo-100 max-w-xl text-sm sm:text-base">
-                Cross-analyzes your protein, fat, and calorie ratios starting from Day 1 to recommend the absolute best meals, exercise setups, and routines.
+              <h4 className="font-extrabold text-gray-900 text-base">No active plan logs found yet</h4>
+              <p className="text-xs text-gray-500 mt-0.5 max-w-lg">
+                Click **Seed Demo Data** to populate your account with sample squats, deadlifts, and soy chunks logs, or analyze simulated preview data instantly.
               </p>
             </div>
-            
-            <div className="flex flex-col sm:flex-row gap-2 shrink-0">
-              {hasNoData && (
-                <button
-                  onClick={handleSeedMockToStorage}
-                  className="px-4 py-2.5 rounded-xl text-xs font-bold bg-amber-400 hover:bg-amber-500 text-slate-950 transition-colors shadow-md"
-                >
-                  Seed Demo Data
-                </button>
-              )}
-              <button
-                onClick={() => handleGenerate(false)}
-                disabled={loading || (hasNoData && !isUsingMock)}
-                className="px-6 py-3.5 rounded-xl text-sm font-bold bg-white text-indigo-600 hover:bg-indigo-50 disabled:bg-white/20 disabled:text-indigo-200 transition-all shadow-md flex items-center justify-center gap-2"
-              >
-                {loading ? (
-                  <>
-                    <RefreshCw className="animate-spin" size={16} />
-                    Analyzing Day 1...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles size={16} />
-                    Generate AI Recommendations
-                  </>
-                )}
-              </button>
-            </div>
           </div>
+          <button
+            onClick={() => handleGenerate(true)}
+            className="w-full md:w-auto bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 text-xs font-bold px-4 py-2.5 rounded-xl transition-all cursor-pointer text-center"
+          >
+            Analyze Demo Data Directly
+          </button>
         </div>
+      )}
 
-        {/* Info Banner when empty */}
-        {hasNoData && !recommendations && !loading && (
-          <div className="mb-8 p-6 rounded-3xl bg-white dark:bg-slate-900/40 border border-amber-200 dark:border-amber-900/30 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-            <div className="flex gap-4 items-start">
-              <div className="p-3 bg-amber-50 dark:bg-amber-950/20 rounded-2xl text-amber-500 shrink-0">
-                <Info size={24} />
-              </div>
-              <div>
-                <h4 className="text-base font-bold text-gray-800 dark:text-gray-200">No logs logged yet for active plan</h4>
-                <p className="text-xs text-gray-500 mt-1 max-w-lg">
-                  To test the recommendations page, you can either click **Seed Demo Data** to write sample logs of deadlifts, squats, soy chunks, and whey into your account, or generate recommendations on simulated preview data directly.
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => handleGenerate(true)}
-              className="w-full md:w-auto px-5 py-3 rounded-2xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/20 dark:hover:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 text-xs font-bold transition-all text-center"
-            >
-              Analyze Demo Data Directly
-            </button>
+      {error && (
+        <div className="bg-rose-500/10 border border-rose-200 p-4 rounded-2xl text-rose-800 text-sm font-semibold flex items-center gap-2">
+          <AlertCircle size={18} className="text-rose-600" />
+          {error}
+        </div>
+      )}
+
+      {/* Loading Skeleton */}
+      {loading && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-pulse">
+          <div className="lg:col-span-2 space-y-6">
+            <div className="bg-gray-100 rounded-3xl h-36 border border-gray-100"></div>
+            <div className="bg-gray-100 rounded-3xl h-56 border border-gray-100"></div>
           </div>
-        )}
+          <div className="bg-gray-100 rounded-3xl h-96 border border-gray-100"></div>
+        </div>
+      )}
 
-        {error && (
-          <div className="mb-6 p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/30 text-rose-800 dark:text-rose-300 flex items-center gap-3">
-            <AlertCircle className="text-rose-500" size={20} />
-            <span className="text-sm font-medium">{error}</span>
-          </div>
-        )}
-
-        {/* Loading placeholder */}
-        {loading && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-2 space-y-8">
-              <div className="bg-white dark:bg-slate-900/40 p-6 rounded-3xl border border-gray-100 dark:border-gray-800/40 shadow-sm h-64 animate-pulse"></div>
-              <div className="bg-white dark:bg-slate-900/40 p-6 rounded-3xl border border-gray-100 dark:border-gray-800/40 shadow-sm h-48 animate-pulse"></div>
-            </div>
-            <div className="bg-white dark:bg-slate-900/40 p-6 rounded-3xl border border-gray-100 dark:border-gray-800/40 shadow-sm h-[400px] animate-pulse"></div>
-          </div>
-        )}
-
-        {/* Main Content Layout */}
-        {recommendations && !loading && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      {/* Main recommendation body */}
+      {recommendations && !loading && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          
+          {/* Main columns */}
+          <div className="lg:col-span-2 space-y-6">
             
-            {/* Left side: Stats & AI recommendations */}
-            <div className="lg:col-span-2 space-y-8">
+            {/* Top Highlights Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               
-              {/* Highlight Metrics Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {/* Card 1 */}
+              <div className="bg-white p-5 rounded-3xl border border-gray-50 shadow-sm relative overflow-hidden flex flex-col justify-between min-h-[130px]">
+                <div className="absolute right-0 top-0 opacity-5 transform translate-x-2 -translate-y-2">
+                  <Utensils size={90} className="text-gray-900" />
+                </div>
+                <div>
+                  <span className="bg-blue-50 text-blue-600 font-extrabold text-[9px] px-2 py-0.5 rounded-md uppercase tracking-wider block mb-2 w-fit">Best Nutrition Day</span>
+                  <h4 className="text-sm font-black text-gray-900">{recommendations.bestNutritionDay.date}</h4>
+                </div>
+                <div className="mt-2 text-xs text-gray-500">
+                  <span>Protein: <strong>{recommendations.bestNutritionDay.protein}</strong></span>
+                  <span className="block text-[10px] text-blue-500 font-bold mt-0.5">{recommendations.bestNutritionDay.ratio}</span>
+                </div>
+              </div>
+
+              {/* Card 2 */}
+              <div className="bg-white p-5 rounded-3xl border border-gray-50 shadow-sm relative overflow-hidden flex flex-col justify-between min-h-[130px]">
+                <div className="absolute right-0 top-0 opacity-5 transform translate-x-2 -translate-y-2">
+                  <Zap size={90} className="text-gray-900" />
+                </div>
+                <div>
+                  <span className="bg-emerald-50 text-emerald-600 font-extrabold text-[9px] px-2 py-0.5 rounded-md uppercase tracking-wider block mb-2 w-fit">Best Food Ratio</span>
+                  <h4 className="text-sm font-black text-gray-900 truncate">{recommendations.bestFoodRatio.name}</h4>
+                </div>
+                <div className="mt-2 text-xs text-gray-500">
+                  <span>Calories: <strong>{recommendations.bestFoodRatio.calories}</strong></span>
+                  <span className="block text-[10px] text-emerald-500 font-bold mt-0.5">{recommendations.bestFoodRatio.ratio}</span>
+                </div>
+              </div>
+
+              {/* Card 3 */}
+              <div className="bg-white p-5 rounded-3xl border border-gray-50 shadow-sm relative overflow-hidden flex flex-col justify-between min-h-[130px]">
+                <div className="absolute right-0 top-0 opacity-5 transform translate-x-2 -translate-y-2">
+                  <Trophy size={90} className="text-gray-900" />
+                </div>
+                <div>
+                  <span className="bg-amber-50 text-amber-600 font-extrabold text-[9px] px-2 py-0.5 rounded-md uppercase tracking-wider block mb-2 w-fit">Best Exercise Day</span>
+                  <h4 className="text-sm font-black text-gray-900">{recommendations.bestExerciseDay.date}</h4>
+                </div>
+                <div className="mt-2 text-xs text-gray-500">
+                  <span>Day Score: <strong>{recommendations.bestExerciseDay.score}</strong></span>
+                  <span className="block text-[10px] text-amber-500 font-bold mt-0.5 truncate">
+                    {recommendations.bestExerciseDay.exercises[0] || "No exercises"}
+                  </span>
+                </div>
+              </div>
+
+            </div>
+
+            {/* AI Analysis Paragraph Card */}
+            <div className="bg-white p-6 rounded-3xl border border-gray-50 shadow-sm relative overflow-hidden">
+              <h3 className="text-base font-extrabold text-gray-900 flex items-center gap-1.5 border-b border-gray-100 pb-3 mb-4">
+                <Sparkles size={16} className="text-blue-500" />
+                AI Comprehensive Analysis & Training Guidelines
+              </h3>
+              <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line font-medium">
+                {recommendations.aiAnalysis}
+              </p>
+            </div>
+
+            {/* Exercises List Card */}
+            <div className="bg-white p-6 rounded-3xl border border-gray-50 shadow-sm">
+              <h3 className="text-base font-extrabold text-gray-900 flex items-center gap-1.5 mb-4">
+                <Trophy size={16} className="text-amber-500" />
+                Exercises Performed on Best Day
+              </h3>
+              <p className="text-xs text-gray-400 mb-4">
+                Cross-referencing logs suggests these exercise routines and muscle groups suited you best:
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {recommendations.bestExerciseDay.exercises.map((ex, i) => (
+                  <div key={i} className="p-3.5 rounded-xl bg-gray-50 border border-gray-100 flex items-center gap-3">
+                    <div className="w-7 h-7 rounded-lg bg-amber-50 border border-amber-100 text-amber-600 flex items-center justify-center font-black text-xs shrink-0">
+                      {i + 1}
+                    </div>
+                    <span className="text-xs font-bold text-gray-800">{ex}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+          </div>
+
+          {/* Right Side: Food Target Suggestions */}
+          <div className="space-y-6">
+            <div className="bg-white p-6 rounded-3xl border border-gray-50 shadow-sm flex flex-col justify-between min-h-[400px]">
+              <div>
+                <h3 className="text-base font-extrabold text-gray-900 flex items-center gap-1.5 mb-4 border-b border-gray-100 pb-3">
+                  <Utensils size={16} className="text-emerald-500" />
+                  Target Foods to Optimize Ratio
+                </h3>
+                <p className="text-xs text-gray-400 mb-5">
+                  Add these high-protein, low-fat options to align your daily meal splits:
+                </p>
                 
-                {/* best nutrition day card */}
-                <div className="bg-white dark:bg-slate-900/40 p-5 rounded-2xl border border-gray-100 dark:border-gray-800/40 shadow-sm relative overflow-hidden flex flex-col justify-between min-h-[140px]">
-                  <div className="absolute right-0 top-0 opacity-5 transform translate-x-2 -translate-y-2">
-                    <Utensils size={100} />
-                  </div>
-                  <div>
-                    <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-wider block mb-1">Best Nutrition Day</span>
-                    <h4 className="text-base font-extrabold text-gray-800 dark:text-gray-200">{recommendations.bestNutritionDay.date}</h4>
-                  </div>
-                  <div className="mt-3">
-                    <p className="text-xs text-gray-400">Macros: <span className="font-semibold text-gray-700 dark:text-gray-300">{recommendations.bestNutritionDay.protein} protein</span></p>
-                    <p className="text-[11px] font-medium text-indigo-600 dark:text-indigo-400 mt-0.5">{recommendations.bestNutritionDay.ratio}</p>
-                  </div>
-                </div>
-
-                {/* best food card */}
-                <div className="bg-white dark:bg-slate-900/40 p-5 rounded-2xl border border-gray-100 dark:border-gray-800/40 shadow-sm relative overflow-hidden flex flex-col justify-between min-h-[140px]">
-                  <div className="absolute right-0 top-0 opacity-5 transform translate-x-2 -translate-y-2">
-                    <Zap size={100} />
-                  </div>
-                  <div>
-                    <span className="text-[10px] font-bold text-pink-500 uppercase tracking-wider block mb-1">Best Food Ratio</span>
-                    <h4 className="text-base font-extrabold text-gray-800 dark:text-gray-200 truncate">{recommendations.bestFoodRatio.name}</h4>
-                  </div>
-                  <div className="mt-3">
-                    <p className="text-xs text-gray-400">Calories: <span className="font-semibold text-gray-700 dark:text-gray-300">{recommendations.bestFoodRatio.calories}</span></p>
-                    <p className="text-[11px] font-medium text-pink-600 dark:text-pink-400 mt-0.5">{recommendations.bestFoodRatio.ratio}</p>
-                  </div>
-                </div>
-
-                {/* best exercise day card */}
-                <div className="bg-white dark:bg-slate-900/40 p-5 rounded-2xl border border-gray-100 dark:border-gray-800/40 shadow-sm relative overflow-hidden flex flex-col justify-between min-h-[140px]">
-                  <div className="absolute right-0 top-0 opacity-5 transform translate-x-2 -translate-y-2">
-                    <Trophy size={100} />
-                  </div>
-                  <div>
-                    <span className="text-[10px] font-bold text-amber-500 uppercase tracking-wider block mb-1">Best Exercise Day</span>
-                    <h4 className="text-base font-extrabold text-gray-800 dark:text-gray-200">{recommendations.bestExerciseDay.date}</h4>
-                  </div>
-                  <div className="mt-3">
-                    <p className="text-xs text-gray-400">Overall Score: <span className="font-semibold text-gray-700 dark:text-gray-300">{recommendations.bestExerciseDay.score}</span></p>
-                    <p className="text-[10px] text-amber-600 dark:text-amber-400 truncate mt-0.5">
-                      {recommendations.bestExerciseDay.exercises[0] || "No exercises"}
-                    </p>
-                  </div>
-                </div>
-
-              </div>
-
-              {/* Comprehensive AI Recommendations Summary Card */}
-              <div className="bg-white dark:bg-slate-900/40 p-6 sm:p-8 rounded-3xl border border-gray-100 dark:border-gray-800/40 shadow-sm relative overflow-hidden">
-                <div className="absolute right-0 top-0 opacity-10 transform translate-x-4 -translate-y-4 text-indigo-500">
-                  <Sparkles size={120} />
-                </div>
-                <h3 className="text-lg font-bold text-gray-800 dark:text-gray-200 flex items-center gap-2 mb-4 border-b border-gray-100 dark:border-gray-800/40 pb-3">
-                  <Sparkles size={18} className="text-indigo-500 animate-pulse" />
-                  <span>AI Comprehensive Analysis & Guideline</span>
-                </h3>
-                <p className="text-gray-700 dark:text-gray-300 leading-relaxed text-sm sm:text-base whitespace-pre-line">
-                  {recommendations.aiAnalysis}
-                </p>
-              </div>
-
-              {/* Best Exercise Exercises List */}
-              <div className="bg-white dark:bg-slate-900/40 p-6 sm:p-8 rounded-3xl border border-gray-100 dark:border-gray-800/40 shadow-sm">
-                <h3 className="text-lg font-bold text-gray-800 dark:text-gray-200 flex items-center gap-2 mb-4">
-                  <Trophy size={18} className="text-amber-500" />
-                  <span>Best Performing Day Exercises</span>
-                </h3>
-                <p className="text-xs text-gray-500 mb-4">
-                  These exercises were performed on your highest scoring day. Cross-referencing suggests these suited you best and generated optimal muscle load:
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {recommendations.bestExerciseDay.exercises.map((ex, i) => (
-                    <div key={i} className="p-4 rounded-xl bg-gray-50 dark:bg-slate-800/40 border border-gray-100 dark:border-gray-800/20 flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-950/20 text-amber-600 flex items-center justify-center font-bold text-xs shrink-0">
-                        {i + 1}
+                <div className="space-y-3.5">
+                  {recommendations.recommendedFoods.map((food, i) => (
+                    <div key={i} className="p-4 rounded-2xl bg-gray-50 border border-gray-100/50">
+                      <div className="flex justify-between items-start gap-2 mb-1.5">
+                        <h4 className="text-xs font-black text-gray-800">{food.name}</h4>
+                        <span className="text-[9px] font-black px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded-md shrink-0">
+                          {food.macros}
+                        </span>
                       </div>
-                      <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">{ex}</span>
+                      <p className="text-xs text-gray-500 leading-relaxed">{food.reason}</p>
                     </div>
                   ))}
                 </div>
               </div>
 
-            </div>
-
-            {/* Right side: Food Recommendations & Fixes */}
-            <div className="space-y-8">
-              
-              {/* Food Recommendations to Optimize ratio */}
-              <div className="bg-white dark:bg-slate-900/40 p-6 sm:p-8 rounded-3xl border border-gray-100 dark:border-gray-800/40 shadow-sm flex flex-col h-full justify-between">
+              <div className="mt-8 p-4 rounded-2xl bg-blue-50/50 border border-blue-100 flex gap-3">
+                <Award size={18} className="text-blue-500 shrink-0 mt-0.5" />
                 <div>
-                  <h3 className="text-lg font-bold text-gray-800 dark:text-gray-200 flex items-center gap-2 mb-4">
-                    <Utensils size={18} className="text-pink-500" />
-                    <span>Target Foods to Optimize Ratio</span>
-                  </h3>
-                  <p className="text-xs text-gray-500 mb-6">
-                    Add these high-protein, calorie-efficient foods to your diet to replicate your best Day 1 macro ratios:
+                  <h5 className="text-xs font-extrabold text-gray-900">Macro Tracking Tip</h5>
+                  <p className="text-[10px] text-gray-500 leading-relaxed mt-0.5">
+                    Fats yield 9 kcal/g, whereas proteins/carbs yield 4 kcal/g. Minimizing oil or cheese helps maintain the best calorie-to-protein ratio.
                   </p>
-                  
-                  <div className="space-y-4">
-                    {recommendations.recommendedFoods.map((food, i) => (
-                      <div key={i} className="p-4 rounded-2xl bg-slate-50/50 dark:bg-slate-800/25 border border-gray-100 dark:border-gray-800/10">
-                        <div className="flex justify-between items-start mb-1.5">
-                          <h4 className="text-sm font-bold text-gray-800 dark:text-gray-200">{food.name}</h4>
-                          <span className="text-[10px] font-bold px-2 py-0.5 bg-pink-50 dark:bg-pink-950/20 text-pink-600 dark:text-pink-400 rounded-full shrink-0">
-                            {food.macros}
-                          </span>
-                        </div>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
-                          {food.reason}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="mt-8 p-4 rounded-2xl bg-indigo-50/50 dark:bg-indigo-950/10 border border-indigo-100 dark:border-indigo-900/20 flex gap-3">
-                  <Award className="text-indigo-500 shrink-0 mt-0.5" size={16} />
-                  <div>
-                    <h5 className="text-xs font-bold text-indigo-800 dark:text-indigo-400">Macro Tracking Tip</h5>
-                    <p className="text-[10px] text-indigo-600/80 dark:text-indigo-300/80 mt-0.5">
-                      Fats have 9 kcal/gram while protein and carbs have 4 kcal/gram. Lowering fat slightly is the easiest way to optimize your calorie-to-protein ratio.
-                    </p>
-                  </div>
                 </div>
               </div>
-
             </div>
-
           </div>
-        )}
 
-      </div>
+        </div>
+      )}
+
     </div>
   );
 }

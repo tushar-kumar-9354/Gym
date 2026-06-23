@@ -3,10 +3,13 @@ import { z } from "zod";
 
 const notesRequestSchema = z.object({
   rawNotes: z.string().min(1, "Notes content cannot be empty"),
+  dailyReports: z.array(z.any()).optional(),
+  loggedMeals: z.array(z.any()).optional(),
+  exerciseLogs: z.array(z.any()).optional(),
 });
 
 const SYSTEM_PROMPT = `You are an elite personal trainer, nutritionist, and sports scientist.
-Given the user's fitness notes written in raw, layman language, convert them into a beautiful, highly structured analysis using markdown bullet points starting with asterisks (*).
+Given the user's fitness notes written in raw layman language AND their historical journey logs (daily reports, exercises, and meals), convert them into a beautiful, highly structured analysis using markdown bullet points starting with asterisks (*).
 
 STRICT RULES:
 1. Respond ONLY with a valid JSON object containing a single key "structuredNotes".
@@ -14,10 +17,10 @@ STRICT RULES:
 3. Use asterisks (*) for ALL bullet points.
 4. Structure the output into these exact sections:
    - ### 🏋️‍♂️ Exercise & Workout Feedback
-     * [Analyze how they felt about their exercise, energy levels, intensity, and muscle groups]
+     * [Analyze how they felt about their exercise, energy levels, intensity, and muscle groups, comparing with their journey logs]
      * [Actionable tips to improve workout quality based on their experience]
    - ### 🍎 Nutrition & Protein Intake
-     * [Evaluate their diet, protein intake, meals, and food choices]
+     * [Evaluate their diet, protein intake, meals, and food choices using their actual meal history]
      * [Provide specific, realistic recommendations to hit their nutrition goals]
    - ### 💧 Hydration & Water Intake
      * [Assess their water intake levels]
@@ -26,7 +29,7 @@ STRICT RULES:
      * [Identify which day they felt they did the best exercise and why]
      * [Detail a clear, step-by-step game plan on how to recreate that success next time (e.g., preparation, mindset, timing)]
    - ### 🛠️ Concrete Fixes to Improve
-     * [A summary list of immediate fixes they should implement starting tomorrow]
+     * [A summary list of immediate fixes they should implement starting tomorrow based on their notes and historical patterns]
 
 5. Do NOT include markdown code block formatting (like \`\`\`) inside the JSON value.
 6. Keep the tone highly encouraging, professional, and clear.`;
@@ -81,7 +84,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid request payload", details: parsed.error.issues }, { status: 400 });
     }
     
-    const { rawNotes } = parsed.data;
+    const { rawNotes, dailyReports = [], loggedMeals = [], exerciseLogs = [] } = parsed.data;
     const apiKey = process.env.GROQ_API_KEY;
     
     if (!apiKey) {
@@ -93,6 +96,17 @@ export async function POST(request: Request) {
     }
 
     try {
+      const userPrompt = `
+User's Layman Notes:
+"${rawNotes}"
+
+User's Journey Context (Last 7 Logs):
+- Daily reports: ${JSON.stringify(dailyReports.slice(-7))}
+- Logged meals: ${JSON.stringify(loggedMeals.slice(-7))}
+- Exercise logs: ${JSON.stringify(exerciseLogs.slice(-7))}
+
+Analyze this context and return the structuredNotes JSON.`;
+
       const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -106,7 +120,7 @@ export async function POST(request: Request) {
           response_format: { type: "json_object" },
           messages: [
             { role: "system", content: SYSTEM_PROMPT },
-            { role: "user", content: `Raw layman notes:\n"${rawNotes}"` },
+            { role: "user", content: userPrompt },
           ],
         }),
       });

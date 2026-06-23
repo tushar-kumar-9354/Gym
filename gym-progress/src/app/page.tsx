@@ -1587,6 +1587,7 @@ export default function Dashboard() {
                       <input
                         type="number"
                         min="1"
+                        step="any"
                         value={newWeeklyWeight}
                         onChange={(e) => setNewWeeklyWeight(e.target.value)}
                         placeholder="Log weight (kg)"
@@ -1658,6 +1659,7 @@ export default function Dashboard() {
                                 <input
                                   type="number"
                                   min="1"
+                                  step="any"
                                   value={editWeightValue}
                                   onChange={(e) => setEditWeightValue(e.target.value)}
                                   placeholder="Enter corrected weight"
