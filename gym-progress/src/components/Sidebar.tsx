@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Activity, Dumbbell, Utensils, Target, LogOut, Calendar, User, BarChart2, FileBarChart, Wrench } from "lucide-react";
+import { Activity, Dumbbell, Utensils, Target, LogOut, Calendar, User, BarChart2, FileBarChart, Wrench, Sparkles } from "lucide-react";
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -34,6 +34,7 @@ export default function Sidebar() {
     { name: "Your Metrics", href: "/info", icon: User },
     { name: "AI Reports", href: "/reports", icon: FileBarChart },
     { name: "FIXES", href: "/fixes", icon: Wrench },
+    { name: "Recommendations", href: "/recommendation", icon: Sparkles },
   ];
 
   return (
