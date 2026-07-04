@@ -2026,7 +2026,10 @@ export default function Dashboard() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
             {/* Goal Trajectory Chart */}
             <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-50">
-              <h3 className="text-lg font-semibold text-blue-500 mb-4">Goal Trajectory (Weight)</h3>
+              <div className="flex items-center gap-2 mb-4">
+                <Target className="text-blue-500" size={20} />
+                <h3 className="text-lg font-semibold text-gray-900">Goal Trajectory (Weight Progress)</h3>
+              </div>
               <div className="h-64">
                 <div className="responsive-chart">
                   <GoalChart dates={chartDates} actualData={actualWeight} targetData={targetWeight} label="Weight" />
