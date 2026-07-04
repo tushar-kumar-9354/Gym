@@ -35,50 +35,28 @@ export default function Dashboard() {
     weights: { date: string; weight: number }[]
   ) => {
     const planStart = startDate ? new Date(startDate) : new Date();
-    const end = new Date(planStart);
-    end.setMonth(end.getMonth() + durationMonths);
+    const totalDays = durationMonths * 30;
 
     const normalizedWeights = normalizeWeeklyWeights(weights);
-
-    // Determine the start date for the chart: minimum of planStart and the earliest logged weight date
-    let start = new Date(planStart);
-    if (normalizedWeights.length > 0) {
-      const earliestWeightDate = new Date(normalizedWeights[0].date);
-      if (earliestWeightDate < start) {
-        start = new Date(earliestWeightDate);
-      }
-    }
 
     const dates: Date[] = [];
     const actualData: (number | null)[] = [];
     const targetData: number[] = [];
 
-    const latestLoggedDateStr = normalizedWeights.length > 0
-      ? getWeightDateKey(normalizedWeights[normalizedWeights.length - 1].date)
-      : null;
+    if (normalizedWeights.length === 0) {
+      dates.push(new Date(planStart));
+      actualData.push(startWeight);
+      targetData.push(goalWeight);
+    } else {
+      normalizedWeights.forEach((w) => {
+        const d = new Date(w.date);
+        dates.push(d);
+        actualData.push(w.weight);
 
-    for (let current = new Date(start); current <= end; current.setDate(current.getDate() + 7)) {
-      const currentStr = getWeightDateKey(current.toISOString());
-
-      dates.push(new Date(current));
-
-      if (latestLoggedDateStr && currentStr > latestLoggedDateStr) {
-        actualData.push(null);
-      } else {
-        const matchingEntries = normalizedWeights.filter(
-          (entry) => getWeightDateKey(entry.date) <= currentStr
-        );
-        if (matchingEntries.length > 0) {
-          actualData.push(matchingEntries[matchingEntries.length - 1].weight);
-        } else {
-          actualData.push(startWeight);
-        }
-      }
-
-      const daysSinceStart = Math.max(0, Math.floor((current.getTime() - planStart.getTime()) / (1000 * 60 * 60 * 24)));
-      const safeTotalDays = Math.max(1, durationMonths * 30);
-      const expectedWeight = startWeight - ((startWeight - goalWeight) * (daysSinceStart / safeTotalDays));
-      targetData.push(expectedWeight);
+        const daysSinceStart = Math.max(0, Math.floor((d.getTime() - planStart.getTime()) / (1000 * 60 * 60 * 24)));
+        const expectedWeight = startWeight - ((startWeight - goalWeight) * (daysSinceStart / Math.max(1, totalDays)));
+        targetData.push(expectedWeight);
+      });
     }
 
     return { dates, actualData, targetData };
