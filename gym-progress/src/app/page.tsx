@@ -2032,7 +2032,13 @@ export default function Dashboard() {
               </div>
               <div className="h-64">
                 <div className="responsive-chart">
-                  <GoalChart dates={chartDates} actualData={actualWeight} targetData={targetWeight} label="Weight" />
+                  <GoalChart
+                    dates={chartDates}
+                    actualData={actualWeight}
+                    targetData={targetWeight}
+                    label="Weight"
+                    targetLabel={`Target (${goalWeight} kg)`}
+                  />
                 </div>
               </div>
             </div>

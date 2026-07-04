@@ -28,9 +28,12 @@ interface GoalChartProps {
   actualData: Array<number | null>;
   targetData: number[];
   label: string;
+  targetLabel?: string;
 }
 
-export default function GoalChart({ dates, actualData, targetData, label }: GoalChartProps) {
+export default function GoalChart({ dates, actualData, targetData, label, targetLabel }: GoalChartProps) {
+  const resolvedTargetLabel = targetLabel ?? `Target ${label}`;
+
   const data = {
     labels: dates,
     datasets: [
@@ -45,7 +48,7 @@ export default function GoalChart({ dates, actualData, targetData, label }: Goal
         pointBackgroundColor: "#3b82f6",
       },
       {
-        label: `Target ${label}`,
+        label: resolvedTargetLabel,
         data: targetData,
         borderColor: "#93c5fd", // Light Blue
         borderDash: [5, 5], // Dashed line
