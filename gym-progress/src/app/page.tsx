@@ -34,11 +34,21 @@ export default function Dashboard() {
     durationMonths: number,
     weights: { date: string; weight: number }[]
   ) => {
-    const start = startDate ? new Date(startDate) : new Date();
-    const end = new Date(start);
+    const planStart = startDate ? new Date(startDate) : new Date();
+    const end = new Date(planStart);
     end.setMonth(end.getMonth() + durationMonths);
 
     const normalizedWeights = normalizeWeeklyWeights(weights);
+
+    // Determine the start date for the chart: minimum of planStart and the earliest logged weight date
+    let start = new Date(planStart);
+    if (normalizedWeights.length > 0) {
+      const earliestWeightDate = new Date(normalizedWeights[0].date);
+      if (earliestWeightDate < start) {
+        start = new Date(earliestWeightDate);
+      }
+    }
+
     const dates: Date[] = [];
     const actualData: (number | null)[] = [];
     const targetData: number[] = [];
@@ -65,7 +75,7 @@ export default function Dashboard() {
         }
       }
 
-      const daysSinceStart = Math.max(0, Math.floor((current.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
+      const daysSinceStart = Math.max(0, Math.floor((current.getTime() - planStart.getTime()) / (1000 * 60 * 60 * 24)));
       const safeTotalDays = Math.max(1, durationMonths * 30);
       const expectedWeight = startWeight - ((startWeight - goalWeight) * (daysSinceStart / safeTotalDays));
       targetData.push(expectedWeight);
@@ -104,6 +114,8 @@ export default function Dashboard() {
 
   // Form for weekly weight
   const [newWeeklyWeight, setNewWeeklyWeight] = useState("");
+  const [newWeeklyWeightDate, setNewWeeklyWeightDate] = useState("");
+  const [forceShowWeighInForm, setForceShowWeighInForm] = useState(false);
   const [showPenaltyDetails, setShowPenaltyDetails] = useState(false);
   const [showWeightEditor, setShowWeightEditor] = useState(false);
   const [selectedWeightEntryDate, setSelectedWeightEntryDate] = useState("");
@@ -397,6 +409,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     loadPlanState();
+    setNewWeeklyWeightDate(new Date().toISOString().split("T")[0]);
 
     const handlePlanRefresh = () => loadPlanState();
     const handleStorageRefresh = (event: StorageEvent) => {
@@ -459,27 +472,53 @@ export default function Dashboard() {
       return;
     }
 
-    const isPlanFinished = weeklyWeights.length >= getRequiredWeeklyLogs();
+    const logDate = newWeeklyWeightDate
+      ? new Date(newWeeklyWeightDate).toISOString()
+      : getTestModeWeightDate();
 
-    if (isPlanFinished) {
+    const isTodayOrFuture = new Date(logDate).toDateString() === new Date().toDateString() || new Date(logDate) > new Date();
+
+    const isPlanFinished = weeklyWeights.length >= getRequiredWeeklyLogs();
+    if (isPlanFinished && isTodayOrFuture) {
+      alert("Plan completed. Weekly logs are locked. Extend your plan duration to log more current weights.");
       return;
     }
 
-    // Limit weight difference to no more than 10kg
-    const lastWeight = weeklyWeights.length > 0 ? weeklyWeights[weeklyWeights.length - 1].weight : startWeight;
+    // Limit weight difference to no more than 10kg from the chronologically preceding weight entry
+    const sorted = [...weeklyWeights].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    let lastWeight = startWeight;
+    for (let i = sorted.length - 1; i >= 0; i--) {
+      if (new Date(sorted[i].date) < new Date(logDate)) {
+        lastWeight = sorted[i].weight;
+        break;
+      }
+    }
     const weightChange = Math.abs(weightVal - lastWeight);
     if (weightChange > 10.0) {
-      alert("Weight difference cannot be more than 10kg in a single week. This is not healthy!");
+      alert("Weight difference cannot be more than 10kg from the preceding weight entry. This is not healthy!");
       return;
     }
 
-    const newEntry = { date: getTestModeWeightDate(), weight: weightVal };
-    const updatedWeights = normalizeWeeklyWeights([...weeklyWeights, newEntry]);
-    persistWeeklyWeights(updatedWeights);
-    setAutoOpenWeighIn(false);
+    // Check if log for this date already exists
+    const targetDateKey = getWeightDateKey(logDate);
+    const existingIndex = weeklyWeights.findIndex(entry => getWeightDateKey(entry.date) === targetDateKey);
+    let updatedWeights;
+    if (existingIndex >= 0) {
+      const confirmOverwrite = window.confirm(`A weight log for ${new Date(logDate).toLocaleDateString()} already exists. Do you want to update it?`);
+      if (!confirmOverwrite) return;
+      updatedWeights = weeklyWeights.map((entry, idx) => idx === existingIndex ? { ...entry, weight: weightVal } : entry);
+    } else {
+      const newEntry = { date: logDate, weight: weightVal };
+      updatedWeights = [...weeklyWeights, newEntry];
+    }
 
-    // Reset next weigh-in to exactly 7 days from now after a successful log
-    if (userEmail && activePlan) {
+    const normalized = normalizeWeeklyWeights(updatedWeights);
+    persistWeeklyWeights(normalized);
+    setAutoOpenWeighIn(false);
+    setForceShowWeighInForm(false);
+
+    // Reset next weigh-in to exactly 7 days from now only if logging today's or future weight
+    if (isTodayOrFuture && userEmail && activePlan) {
       try {
         const next = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
         localStorage.setItem(`${userEmail}_${activePlan}_nextWeighIn`, next.toISOString());
@@ -491,68 +530,91 @@ export default function Dashboard() {
       }
     }
 
-    // Calculate expected weight today to evaluate recommendation
-    const startObj = planStartDate ? new Date(planStartDate) : new Date();
-    const diffTime = Math.abs(new Date().getTime() - startObj.getTime());
-    const daysSinceStart = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-    const totalDays = Math.max(1, planDuration * 30);
-    const expectedWeight = startWeight - ((startWeight - goalWeight) * (daysSinceStart / totalDays));
-    const diff = weightVal - expectedWeight;
-    const absDiff = Math.abs(diff);
+    // Only calculate expected weight today and evaluate recommendation if logging today's or future weight
+    if (isTodayOrFuture) {
+      // Calculate expected weight today to evaluate recommendation
+      const startObj = planStartDate ? new Date(planStartDate) : new Date();
+      const diffTime = Math.abs(new Date().getTime() - startObj.getTime());
+      const daysSinceStart = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+      const totalDays = Math.max(1, planDuration * 30);
+      const expectedWeight = startWeight - ((startWeight - goalWeight) * (daysSinceStart / totalDays));
+      const diff = weightVal - expectedWeight;
+      const absDiff = Math.abs(diff);
 
-    const isLosing = startWeight > goalWeight;
-    const isAhead = isLosing ? diff < 0 : diff > 0;
+      const isLosing = startWeight > goalWeight;
+      const isAhead = isLosing ? diff < 0 : diff > 0;
 
-    if (absDiff >= 2.0) {
-      setLoadingRecommendation(true);
-      setAiRecommendation(null);
-      setShowRecommendationDetails(true);
+      if (absDiff >= 2.0) {
+        setLoadingRecommendation(true);
+        setAiRecommendation(null);
+        setShowRecommendationDetails(true);
 
-      const proposedCalories = isAhead ? Math.max(1200, Math.round(targetCalories - 200)) : Math.round(targetCalories + 200);
-      const proposedProtein = Math.round(weightVal * 2.2); // 1g/lb is approx 2.2g/kg
-      const proposedFats = Math.round(goalWeightLbs * 0.4);
-      const proposedSleep = Math.min(10, Math.max(6, sleepTarget + 1));
-      const proposedWater = Math.round(targetHydration + 250);
+        const proposedCalories = isAhead ? Math.max(1200, Math.round(targetCalories - 200)) : Math.round(targetCalories + 200);
+        const proposedProtein = Math.round(weightVal * 2.2); // 1g/lb is approx 2.2g/kg
+        const proposedFats = Math.round(goalWeightLbs * 0.4);
+        const proposedSleep = Math.min(10, Math.max(6, sleepTarget + 1));
+        const proposedWater = Math.round(targetHydration + 250);
 
-      const aiMsg = isAhead
-        ? `Ahead of schedule by ${Math.round(absDiff)}kg!\n\nGreat gains! Make sure protein intake is high (1g/lb) and progressive overload is driving the growth — not just calorie excess.`
-        : `Behind schedule by ${Math.round(absDiff)}kg.\n\nIncrease your caloric surplus by 100–200 kcal/day and focus on progressive overload.`;
+        const aiMsg = isAhead
+          ? `Ahead of schedule by ${Math.round(absDiff)}kg!\n\nGreat gains! Make sure protein intake is high (1g/lb) and progressive overload is driving the growth — not just calorie excess.`
+          : `Behind schedule by ${Math.round(absDiff)}kg.\n\nIncrease your caloric surplus by 100–200 kcal/day and focus on progressive overload.`;
 
-      try {
-        const response = await fetch("/api/gemini/analyze-routine", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            activePlanName: activePlan,
-            startWeight,
-            goalWeight,
-            planDuration,
-            targetCalories: proposedCalories,
-            targetProtein: proposedProtein,
-            targetFats: proposedFats,
-            goal,
-            activityLevel,
-            sleepTarget: proposedSleep,
-            userProfile: {
-              gymTiming: "06:00 PM",
-              wakeTime: "06:30 AM",
-              sleepTime: "10:30 PM",
-              dietPreference: "Flexible",
-              experienceLevel: "Intermediate",
-              medicalContext: "None",
-              injuries: isAhead
-                ? `Ahead of schedule by ${Math.round(absDiff)}kg! Great gains! Make sure protein intake is high (1g/lb) and progressive overload is driving the growth — not just calorie excess.`
-                : `Behind schedule by ${Math.round(absDiff)}kg. Increase your caloric surplus by 100–200 kcal/day and focus on progressive overload.`
-            }
-          }),
-        });
+        try {
+          const response = await fetch("/api/gemini/analyze-routine", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              activePlanName: activePlan,
+              startWeight,
+              goalWeight,
+              planDuration,
+              targetCalories: proposedCalories,
+              targetProtein: proposedProtein,
+              targetFats: proposedFats,
+              goal,
+              activityLevel,
+              sleepTarget: proposedSleep,
+              userProfile: {
+                gymTiming: "06:00 PM",
+                wakeTime: "06:30 AM",
+                sleepTime: "10:30 PM",
+                dietPreference: "Flexible",
+                experienceLevel: "Intermediate",
+                medicalContext: "None",
+                injuries: isAhead
+                  ? `Ahead of schedule by ${Math.round(absDiff)}kg! Great gains! Make sure protein intake is high (1g/lb) and progressive overload is driving the growth — not just calorie excess.`
+                  : `Behind schedule by ${Math.round(absDiff)}kg. Increase your caloric surplus by 100–200 kcal/day and focus on progressive overload.`
+              }
+            }),
+          });
 
-        if (response.ok) {
-          const parsed = await response.json();
+          if (response.ok) {
+            const parsed = await response.json();
+            setAiRecommendation({
+              onTrack: false,
+              diff: Math.round(diff),
+              absDiff: Math.round(absDiff),
+              weight: weightVal,
+              message: aiMsg,
+              targets: {
+                calories: proposedCalories,
+                protein: proposedProtein,
+                fats: proposedFats,
+                sleep: proposedSleep,
+                water: proposedWater
+              },
+              timetable: parsed.timetable || [],
+              tips: parsed.tips || []
+            });
+          } else {
+            throw new Error("API call failed");
+          }
+        } catch (err) {
+          // Offline / Fallback recommendation
           setAiRecommendation({
             onTrack: false,
-            diff: Math.round(diff),
-            absDiff: Math.round(absDiff),
+            diff: diff,
+            absDiff: absDiff,
             weight: weightVal,
             message: aiMsg,
             targets: {
@@ -562,55 +624,35 @@ export default function Dashboard() {
               sleep: proposedSleep,
               water: proposedWater
             },
-            timetable: parsed.timetable || [],
-            tips: parsed.tips || []
+            timetable: [
+              { time: "07:00 AM", activity: "Morning Hydration & Light Walk", description: "Drink 500ml water immediately upon waking. Walk briskly for 15-20 mins." },
+              { time: "08:30 AM", activity: "High-Protein Breakfast", description: `Aim for ${Math.round(proposedProtein / 4)}g of protein (e.g., egg whites, protein shake, oats).` },
+              { time: "01:00 PM", activity: "Balanced Fuel Lunch", description: "Lean chicken breast/tofu with sweet potato and green veggies." },
+              { time: "05:30 PM", activity: "Pre-Workout Snack", description: "Rice cakes with peanut butter or a banana." },
+              { time: "06:30 PM", activity: "Progressive Overload Workout", description: "Focus on heavy compound lifts. Log all sets and reps in the gym app." },
+              { time: "08:30 PM", activity: "Post-Workout Recovery Meal", description: "Steak/salmon with jasmine rice. Replenish nutrients." },
+              { time: "10:00 PM", activity: "Wind Down & Sleep Prep", description: "No screens. Rest to hit the target sleep hours." }
+            ],
+            tips: [
+              `Target a protein intake of ${proposedProtein}g to support ${isAhead ? "muscle growth" : "muscle retention"}.`,
+              `Keep daily calories at ${proposedCalories} kcal to optimize weight adjustment.`,
+              `Ensure you sleep at least ${proposedSleep} hours for optimal muscle recovery.`,
+              `Drink at least ${proposedWater}ml water daily to stay perfectly hydrated.`
+            ]
           });
-        } else {
-          throw new Error("API call failed");
+        } finally {
+          setLoadingRecommendation(false);
         }
-      } catch (err) {
-        // Offline / Fallback recommendation
+      } else {
         setAiRecommendation({
-          onTrack: false,
-          diff: diff,
-          absDiff: absDiff,
-          weight: weightVal,
-          message: aiMsg,
-          targets: {
-            calories: proposedCalories,
-            protein: proposedProtein,
-            fats: proposedFats,
-            sleep: proposedSleep,
-            water: proposedWater
-          },
-          timetable: [
-            { time: "07:00 AM", activity: "Morning Hydration & Light Walk", description: "Drink 500ml water immediately upon waking. Walk briskly for 15-20 mins." },
-            { time: "08:30 AM", activity: "High-Protein Breakfast", description: `Aim for ${Math.round(proposedProtein / 4)}g of protein (e.g., egg whites, protein shake, oats).` },
-            { time: "01:00 PM", activity: "Balanced Fuel Lunch", description: "Lean chicken breast/tofu with sweet potato and green veggies." },
-            { time: "05:30 PM", activity: "Pre-Workout Snack", description: "Rice cakes with peanut butter or a banana." },
-            { time: "06:30 PM", activity: "Progressive Overload Workout", description: "Focus on heavy compound lifts. Log all sets and reps in the gym app." },
-            { time: "08:30 PM", activity: "Post-Workout Recovery Meal", description: "Steak/salmon with jasmine rice. Replenish nutrients." },
-            { time: "10:00 PM", activity: "Wind Down & Sleep Prep", description: "No screens. Rest to hit the target sleep hours." }
-          ],
-          tips: [
-            `Target a protein intake of ${proposedProtein}g to support ${isAhead ? "muscle growth" : "muscle retention"}.`,
-            `Keep daily calories at ${proposedCalories} kcal to optimize weight adjustment.`,
-            `Ensure you sleep at least ${proposedSleep} hours for optimal muscle recovery.`,
-            `Drink at least ${proposedWater}ml water daily to stay perfectly hydrated.`
-          ]
+          onTrack: true,
+          message: "No recommendations needed. Keep pushing like that!"
         });
-      } finally {
-        setLoadingRecommendation(false);
       }
-    } else {
-      setAiRecommendation({
-        onTrack: true,
-        message: "No recommendations needed. Keep pushing like that!"
-      });
     }
 
     setLastActionTime(Date.now());
-    alert(`Weight Logged Successfully! ${TEST_MODE && weeklyWeights.length > 0 ? "Next 7-day target" : "Today"}: ${weightVal} kg`);
+    alert(`Weight Logged Successfully for ${new Date(logDate).toLocaleDateString()}: ${weightVal} kg`);
     setNewWeeklyWeight("");
   };
 
@@ -1577,27 +1619,65 @@ export default function Dashboard() {
                 </div>
 
                 <div className="mt-4 pt-4 border-t border-gray-50 space-y-3">
-                  {planFinished ? (
-                    <div className="text-center bg-gray-100 rounded-lg p-3 border border-gray-200">
-                      <span className="text-sm font-bold text-gray-500 block">Plan Completed 🏆</span>
-                      <span className="text-xs text-gray-400 block mt-1">Weekly logs are locked. Extend your plan duration to log more.</span>
-                    </div>
-                  ) : (showWeighInForm || autoOpenWeighIn) ? (
-                    <form onSubmit={handleAddWeeklyWeight} className="flex gap-2">
-                      <input
-                        type="number"
-                        min="1"
-                        step="any"
-                        value={newWeeklyWeight}
-                        onChange={(e) => setNewWeeklyWeight(e.target.value)}
-                        placeholder="Log weight (kg)"
-                        required
-                        className="bg-gray-50 border border-gray-100 rounded-lg py-2 px-3 focus:outline-none focus:border-blue-500 text-sm flex-1 text-gray-900"
-                      />
-                      <button type="submit" className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
-                        Log
-                      </button>
+                  {(showWeighInForm || autoOpenWeighIn || forceShowWeighInForm) ? (
+                    <form onSubmit={handleAddWeeklyWeight} className="space-y-3 bg-gray-50 p-4 rounded-2xl border border-gray-100 animate-fadeIn">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-semibold text-gray-500 block">Weight (kg)</label>
+                          <input
+                            type="number"
+                            min="1"
+                            step="any"
+                            value={newWeeklyWeight}
+                            onChange={(e) => setNewWeeklyWeight(e.target.value)}
+                            placeholder="e.g. 78.5"
+                            required
+                            className="w-full bg-white border border-gray-200 rounded-lg py-2 px-3 focus:outline-none focus:border-blue-500 text-sm text-gray-900"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-semibold text-gray-500 block">Date</label>
+                          <input
+                            type="date"
+                            value={newWeeklyWeightDate}
+                            onChange={(e) => setNewWeeklyWeightDate(e.target.value)}
+                            required
+                            className="w-full bg-white border border-gray-200 rounded-lg py-2 px-3 focus:outline-none focus:border-blue-500 text-sm text-gray-900"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button type="submit" className="flex-1 bg-blue-500 hover:bg-blue-600 text-white py-2 rounded-lg text-sm font-semibold transition-colors">
+                          Log Weight
+                        </button>
+                        {forceShowWeighInForm && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setForceShowWeighInForm(false);
+                              setNewWeeklyWeight("");
+                            }}
+                            className="bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 px-3 py-2 rounded-lg text-sm font-medium transition-colors"
+                          >
+                            Cancel
+                          </button>
+                        )}
+                      </div>
                     </form>
+                  ) : planFinished ? (
+                    <div className="text-center bg-gray-100 rounded-lg p-3 border border-gray-200 space-y-2">
+                      <div>
+                        <span className="text-sm font-bold text-gray-500 block">Plan Completed 🏆</span>
+                        <span className="text-xs text-gray-400 block mt-1">Weekly logs are locked. Extend your plan duration to log more.</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setForceShowWeighInForm(true)}
+                        className="text-xs font-semibold text-blue-600 hover:text-blue-700 bg-white border border-blue-100 rounded-full px-3 py-1.5 hover:bg-blue-50 transition-colors inline-block"
+                      >
+                        Log weight for a custom date
+                      </button>
+                    </div>
                   ) : (
                     <div className="text-center bg-gray-50 rounded-lg p-3">
                       <span className="text-sm font-medium text-gray-600 block">Next weigh-in in</span>
@@ -1606,6 +1686,13 @@ export default function Dashboard() {
                       ) : (
                         <span className="text-2xl font-bold text-blue-500 block mt-1">{nextWeighInDays} <span className="text-sm font-medium">{TEST_MODE ? "seconds" : "days"}</span></span>
                       )}
+                      <button
+                        type="button"
+                        onClick={() => setForceShowWeighInForm(true)}
+                        className="mt-2 text-xs font-semibold text-blue-600 hover:text-blue-700 bg-white border border-blue-100 rounded-full px-3 py-1.5 hover:bg-blue-50 transition-colors inline-block"
+                      >
+                        Log weight for a custom date
+                      </button>
                     </div>
                   )}
 

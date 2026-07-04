@@ -136,8 +136,11 @@ export default function Visualise() {
   const waterTarget = getHydrationTarget(currentWeight, goal, activityLevel);
 
   // 1. Process Weight Data (with Target Baseline)
-  const weightDates = weeklyWeights.map(w => new Date(w.date).toLocaleDateString('en-US'));
-  const weightValues = weeklyWeights.map(w => w.weight);
+  const sortedWeights = [...weeklyWeights]
+    .filter(w => w && w.date && typeof w.weight === "number" && Number.isFinite(w.weight))
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  const weightDates = sortedWeights.map(w => new Date(w.date).toLocaleDateString('en-US'));
+  const weightValues = sortedWeights.map(w => w.weight);
 
   const weightData = {
     labels: weightDates.length > 0 ? weightDates : ["No Data"],
