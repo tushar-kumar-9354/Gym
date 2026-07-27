@@ -162,15 +162,30 @@ export default function ReportsExport() {
       acc[bodyPart].totalSets += 1;
       if (log.date) acc[bodyPart].dates.add(log.date);
       return acc;
-    }, {} as Record<string, { totalSets: number; dates: Set<string> }>);
+    }, {} as Record<string, { totalSets:  number; dates: Set<string> }>);
 
     const bodyPartSummary = Object.entries(exerciseBodyPartMap)
       .map(([bodyPart, data]) => ({
         bodyPart,
         totalSets: data.totalSets,
         daysTrained: data.dates.size,
+        avgSetsPerDay: exerciseDays.length > 0 ? Number((data.totalSets / exerciseDays.length).toFixed(1)) : 0,
       }))
       .sort((a, b) => b.totalSets - a.totalSets);
+
+    const exerciseFrequencyMap: Record<string, number> = exerciseLogs.reduce((acc, log) => {
+      const name = log.exercise || "Unknown Exercise";
+      acc[name] = (acc[name] || 0) + 1;
+      return acc;
+    }, {});
+
+    const mostFrequentExercise = Object.entries(exerciseFrequencyMap)
+      .sort((a, b) => b[1] - a[1])[0]?.[0] || "No logs yet";
+    const totalDistinctExercises = Object.keys(exerciseFrequencyMap).length;
+    const totalSetsLogged = exerciseLogs.length;
+    const averageSetsPerWorkoutDay = exerciseDays.length > 0
+      ? Number((totalSetsLogged / exerciseDays.length).toFixed(1))
+      : 0;
 
     let report = `GYMPROGRESS+ PREMIUM HEALTH & FITNESS REPORT\n`;
     report += `==================================================\n`;
@@ -188,10 +203,14 @@ export default function ReportsExport() {
     report += `- Average Calories Consumed: ${avgCalories} kcal\n`;
     report += `- Average Protein Consumed: ${avgProtein} g\n`;
     report += `- Total Workout Days Logged: ${exerciseDays.length}\n`;
+    report += `- Total Sets Logged: ${totalSetsLogged}\n`;
+    report += `- Total Distinct Exercises: ${totalDistinctExercises}\n`;
+    report += `- Most Frequent Exercise: ${mostFrequentExercise}\n`;
+    report += `- Average Sets Per Workout Day: ${averageSetsPerWorkoutDay}\n`;
     report += `- Exercise Body Part Summary:\n`;
     if (bodyPartSummary.length > 0) {
       bodyPartSummary.forEach(item => {
-        report += `  - ${item.bodyPart}: ${item.totalSets} sets across ${item.daysTrained} days\n`;
+        report += `  - ${item.bodyPart}: ${item.totalSets} sets across ${item.daysTrained} days (avg ${item.avgSetsPerDay} sets/day)\n`;
       });
     } else {
       report += `  - No workout logs available.\n`;
@@ -310,6 +329,19 @@ export default function ReportsExport() {
       }))
       .sort((a, b) => b.totalSets - a.totalSets);
 
+    const totalSetsLogged = exerciseLogs.length;
+    const exerciseFrequencyMap: Record<string, number> = exerciseLogs.reduce((acc, log) => {
+      const name = log.exercise || "Unknown Exercise";
+      acc[name] = (acc[name] || 0) + 1;
+      return acc;
+    }, {});
+    const totalDistinctExercises = Object.keys(exerciseFrequencyMap).length;
+    const mostFrequentExercise = Object.entries(exerciseFrequencyMap)
+      .sort((a, b) => b[1] - a[1])[0]?.[0] || "No logs yet";
+    const averageSetsPerWorkoutDay = exerciseDays.length > 0
+      ? Number((totalSetsLogged / exerciseDays.length).toFixed(1))
+      : 0;
+
     const reportData = {
       user: userEmail,
       plan: activePlan,
@@ -318,11 +350,22 @@ export default function ReportsExport() {
       averageDailyCalories: avgCalories,
       averageDailyProtein: avgProtein,
       totalWorkoutDays: exerciseDays.length,
+      totalSetsLogged,
+      totalDistinctExercises,
+      mostFrequentExercise,
+      averageSetsPerWorkoutDay,
       exerciseBodyPartSummary: bodyPartSummary,
-      personalBests: personalBests,
+      personalBests,
       data: dailyReports,
       loggedMeals,
       exerciseLogs,
+      exerciseHistorySummary: {
+        totalExercises: totalDistinctExercises,
+        totalSets: totalSetsLogged,
+        workoutDays: exerciseDays.length,
+        mostFrequentExercise,
+        byBodyPart: bodyPartSummary,
+      },
     };
     const blob = new Blob([JSON.stringify(reportData, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);

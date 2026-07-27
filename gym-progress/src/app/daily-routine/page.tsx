@@ -2909,6 +2909,12 @@ export default function DailyRoutine() {
                   <h3 className="text-xl font-black text-gray-900">Average</h3>
                   <p className="text-sm text-gray-500">Daily nutrition averages and workout body part insights.</p>
                 </div>
+                <Link
+                  href="/exercise-history"
+                  className="inline-flex items-center justify-center rounded-2xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50"
+                >
+                  View Completed Exercises
+                </Link>
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
