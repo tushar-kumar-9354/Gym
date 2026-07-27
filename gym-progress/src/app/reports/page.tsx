@@ -291,6 +291,25 @@ export default function ReportsExport() {
   };
 
   const handleDownloadJSON = () => {
+    const totalDays = dailyReports.length;
+    const avgCalories = totalDays > 0 ? Math.round(dailyReports.reduce((acc, d) => acc + d.calories, 0) / totalDays) : 0;
+    const avgProtein = totalDays > 0 ? Math.round(dailyReports.reduce((acc, d) => acc + (d.protein || 0), 0) / totalDays) : 0;
+    const exerciseDays = Array.from(new Set(exerciseLogs.map(log => log.date)));
+    const exerciseBodyPartMap: Record<string, { totalSets: number; dates: Set<string> }> = exerciseLogs.reduce((acc, log) => {
+      const bodyPart = log.bodyPart || "Unknown";
+      if (!acc[bodyPart]) acc[bodyPart] = { totalSets: 0, dates: new Set() };
+      acc[bodyPart].totalSets += 1;
+      if (log.date) acc[bodyPart].dates.add(log.date);
+      return acc;
+    }, {} as Record<string, { totalSets: number; dates: Set<string> }>);
+    const bodyPartSummary = Object.entries(exerciseBodyPartMap)
+      .map(([bodyPart, data]) => ({
+        bodyPart,
+        totalSets: data.totalSets,
+        daysTrained: data.dates.size,
+      }))
+      .sort((a, b) => b.totalSets - a.totalSets);
+
     const reportData = {
       user: userEmail,
       plan: activePlan,
