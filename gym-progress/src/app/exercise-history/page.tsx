@@ -4,6 +4,14 @@ import React, { useMemo, useState } from "react";
 import Link from "next/link";
 import { Download, ListChecks, ArrowLeft } from "lucide-react";
 
+interface ExerciseLogEntry {
+  exercise?: string;
+  bodyPart?: string;
+  date?: string;
+  weight?: number;
+  oneRM?: number;
+}
+
 export default function ExerciseHistoryPage() {
   const [userEmail] = useState(() => {
     if (typeof window === "undefined") return "";
@@ -16,12 +24,12 @@ export default function ExerciseHistoryPage() {
     return email ? localStorage.getItem(`${email}_activePlan`) : null;
   });
 
-  const [exerciseLogs] = useState<Record<string, unknown>[]>(() => {
+  const [exerciseLogs] = useState<ExerciseLogEntry[]>(() => {
     if (typeof window === "undefined") return [];
     const email = localStorage.getItem("userEmail") || "";
     const plan = email ? localStorage.getItem(`${email}_activePlan`) : null;
     const logs = plan ? JSON.parse(localStorage.getItem(`${email}_${plan}_exerciseLogs`) || "[]") : [];
-    return Array.isArray(logs) ? logs : [];
+    return Array.isArray(logs) ? (logs as ExerciseLogEntry[]) : [];
   });
 
   const exerciseSummary = useMemo(() => {
