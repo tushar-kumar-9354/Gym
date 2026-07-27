@@ -684,6 +684,19 @@ export default function DailyRoutine() {
     }))
     .sort((a, b) => b.totalSets - a.totalSets);
 
+  const exerciseFrequencyMap = exerciseLogs.reduce((acc: Record<string, number>, log) => {
+    const name = log.exercise || "Unknown Exercise";
+    acc[name] = (acc[name] || 0) + 1;
+    return acc;
+  }, {});
+
+  const mostFrequentExercise = Object.entries(exerciseFrequencyMap)
+    .sort((a, b) => b[1] - a[1])[0]?.[0] || "No logs yet";
+  const totalDistinctExercises = Object.keys(exerciseFrequencyMap).length;
+  const averageSetsPerWorkoutDay = exerciseDays.length > 0
+    ? Number((exerciseLogs.length / exerciseDays.length).toFixed(1))
+    : 0;
+
   // Sync steps count to local storage
   const handleUpdateSteps = (newVal: number) => {
     setSteps(newVal);
@@ -2937,6 +2950,34 @@ export default function DailyRoutine() {
                     ))}
                   </div>
                 )}
+              </div>
+
+              <div className="mt-6 bg-blue-50 border border-blue-100 rounded-3xl p-5">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div>
+                    <h4 className="text-sm font-black text-blue-900">Gym Test Panel</h4>
+                    <p className="text-xs text-blue-500">Quick exercise metrics for testing and review.</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs uppercase tracking-[0.18em] text-blue-500">Distinct Exercises</p>
+                    <p className="text-2xl font-black text-blue-900">{totalDistinctExercises}</p>
+                  </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-3 mt-4">
+                  <div className="bg-white rounded-3xl border border-blue-100 p-4 text-center">
+                    <p className="text-xs uppercase tracking-[0.18em] text-gray-500">Most Frequent Exercise</p>
+                    <p className="text-sm font-semibold text-gray-900 mt-2">{mostFrequentExercise}</p>
+                  </div>
+                  <div className="bg-white rounded-3xl border border-blue-100 p-4 text-center">
+                    <p className="text-xs uppercase tracking-[0.18em] text-gray-500">Avg Sets / Workout Day</p>
+                    <p className="text-2xl font-black text-blue-900 mt-2">{averageSetsPerWorkoutDay}</p>
+                  </div>
+                  <div className="bg-white rounded-3xl border border-blue-100 p-4 text-center">
+                    <p className="text-xs uppercase tracking-[0.18em] text-gray-500">Total Workout Days</p>
+                    <p className="text-2xl font-black text-blue-900 mt-2">{exerciseDays.length}</p>
+                  </div>
+                </div>
               </div>
             </section>
 
