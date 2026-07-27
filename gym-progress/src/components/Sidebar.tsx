@@ -36,6 +36,7 @@ export default function Sidebar() {
     { name: "AI Reports", href: "/reports", icon: FileBarChart },
     { name: "FIXES", href: "/fixes", icon: Wrench },
     { name: "Recommendations", href: "/recommendation", icon: Sparkles },
+    { name: "Deploy Check", href: "/deploy-check", icon: Activity },
   ];
 
   return (
