@@ -2835,8 +2835,8 @@ export default function DailyRoutine() {
                   <h3 className="text-base font-extrabold text-gray-900 flex items-center gap-2">
                     <Sparkles size={16} className="text-blue-500" /> Deep Personalization & Profile Timing
                   </h3>
-                  <p className="text-xs text-gray-500 mt-1">AI coach adapts boundaries based on bedtime & gym schedules.</p>
-                </div>
+                  <p className="text-xs text-gray-500 mt-1">AI coach adapts boundaries based on bedtime &                   ssh-keygen -t ed25519 -f C:\Users\hp\.ssh\id_ed25519_deploy_gym -C deploy-key-gym-progress -N "" -qgym schedules.</p>
+                </div> 
                 <button
                   onClick={() => {
                     const confirmReset = confirm("Restore entire week timetable back to preset defaults?");
