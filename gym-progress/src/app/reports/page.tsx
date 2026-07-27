@@ -153,6 +153,24 @@ export default function ReportsExport() {
     const avgScore = totalDays > 0 ? Math.round(dailyReports.reduce((acc, d) => acc + d.score, 0) / totalDays) : 0;
     const avgSleep = totalDays > 0 ? Math.round(dailyReports.reduce((acc, d) => acc + (d.sleepHours || 0), 0) / totalDays).toString() : "0";
     const avgCalories = totalDays > 0 ? Math.round(dailyReports.reduce((acc, d) => acc + d.calories, 0) / totalDays) : 0;
+    const avgProtein = totalDays > 0 ? Math.round(dailyReports.reduce((acc, d) => acc + (d.protein || 0), 0) / totalDays) : 0;
+
+    const exerciseDays = Array.from(new Set(exerciseLogs.map(log => log.date)));
+    const exerciseBodyPartMap: Record<string, { totalSets: number; dates: Set<string> }> = exerciseLogs.reduce((acc, log) => {
+      const bodyPart = log.bodyPart || "Unknown";
+      if (!acc[bodyPart]) acc[bodyPart] = { totalSets: 0, dates: new Set() };
+      acc[bodyPart].totalSets += 1;
+      if (log.date) acc[bodyPart].dates.add(log.date);
+      return acc;
+    }, {} as Record<string, { totalSets: number; dates: Set<string> }>);
+
+    const bodyPartSummary = Object.entries(exerciseBodyPartMap)
+      .map(([bodyPart, data]) => ({
+        bodyPart,
+        totalSets: data.totalSets,
+        daysTrained: data.dates.size,
+      }))
+      .sort((a, b) => b.totalSets - a.totalSets);
 
     let report = `GYMPROGRESS+ PREMIUM HEALTH & FITNESS REPORT\n`;
     report += `==================================================\n`;
@@ -168,6 +186,16 @@ export default function ReportsExport() {
     report += `- Average Daily Score: ${avgScore}%\n`;
     report += `- Average Sleep Duration: ${avgSleep} hours\n`;
     report += `- Average Calories Consumed: ${avgCalories} kcal\n`;
+    report += `- Average Protein Consumed: ${avgProtein} g\n`;
+    report += `- Total Workout Days Logged: ${exerciseDays.length}\n`;
+    report += `- Exercise Body Part Summary:\n`;
+    if (bodyPartSummary.length > 0) {
+      bodyPartSummary.forEach(item => {
+        report += `  - ${item.bodyPart}: ${item.totalSets} sets across ${item.daysTrained} days\n`;
+      });
+    } else {
+      report += `  - No workout logs available.\n`;
+    }
     report += `==================================================\n\n`;
 
     report += `==================================================\n`;
@@ -268,8 +296,14 @@ export default function ReportsExport() {
       plan: activePlan,
       generatedOn: new Date().toISOString(),
       daysFinalized: dailyReports.length,
+      averageDailyCalories: avgCalories,
+      averageDailyProtein: avgProtein,
+      totalWorkoutDays: exerciseDays.length,
+      exerciseBodyPartSummary: bodyPartSummary,
       personalBests: personalBests,
-      data: dailyReports
+      data: dailyReports,
+      loggedMeals,
+      exerciseLogs,
     };
     const blob = new Blob([JSON.stringify(reportData, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);

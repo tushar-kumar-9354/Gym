@@ -650,6 +650,40 @@ export default function DailyRoutine() {
     ? Math.round((setsLoggedCount / targetWorkoutSetsCount) * 100) 
     : 0;
 
+  const exerciseDays = Array.from(new Set(exerciseLogs.map(log => log.date)));
+  const nutritionDays = Array.from(new Set(dietLogs.map(log => log.date)));
+  const nutritionSummary = nutritionDays.map(date => {
+    const mealsForDate = dietLogs.filter(m => m.date === date);
+    return {
+      calories: mealsForDate.reduce((sum, meal) => sum + (meal.calories || 0), 0),
+      protein: mealsForDate.reduce((sum, meal) => sum + (meal.protein || 0), 0),
+    };
+  });
+
+  const averageDailyCalories = nutritionSummary.length > 0
+    ? Math.round(nutritionSummary.reduce((sum, day) => sum + day.calories, 0) / nutritionSummary.length)
+    : 0;
+  const averageDailyProtein = nutritionSummary.length > 0
+    ? Math.round(nutritionSummary.reduce((sum, day) => sum + day.protein, 0) / nutritionSummary.length)
+    : 0;
+
+  const exerciseBodyPartMap = exerciseLogs.reduce((acc: Record<string, { totalSets: number; dates: Set<string> }>, log) => {
+    const bodyPart = log.bodyPart || "Unknown";
+    if (!acc[bodyPart]) acc[bodyPart] = { totalSets: 0, dates: new Set() };
+    acc[bodyPart].totalSets += 1;
+    if (log.date) acc[bodyPart].dates.add(log.date);
+    return acc;
+  }, {});
+
+  const exerciseStatsByBodyPart = Object.entries(exerciseBodyPartMap)
+    .map(([bodyPart, data]) => ({
+      bodyPart,
+      totalSets: data.totalSets,
+      daysTrained: data.dates.size,
+      averageSetsPerDay: exerciseDays.length > 0 ? Number((data.totalSets / exerciseDays.length).toFixed(1)) : 0,
+    }))
+    .sort((a, b) => b.totalSets - a.totalSets);
+
   // Sync steps count to local storage
   const handleUpdateSteps = (newVal: number) => {
     setSteps(newVal);
@@ -2855,6 +2889,56 @@ export default function DailyRoutine() {
                 </div>
               </div>
             </div>
+
+            <section className="bg-white p-6 rounded-3xl border border-gray-200 shadow-sm text-gray-900">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
+                <div>
+                  <h3 className="text-xl font-black text-gray-900">Average</h3>
+                  <p className="text-sm text-gray-500">Daily nutrition averages and workout body part insights.</p>
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="bg-gray-50 border border-gray-100 p-4 rounded-3xl text-center">
+                  <span className="text-xs uppercase tracking-[0.18em] text-gray-500 block mb-2">Avg Daily Calories</span>
+                  <p className="text-2xl font-black text-orange-700">{averageDailyCalories}</p>
+                  <p className="text-xs text-gray-500 mt-2">Based on {nutritionDays.length} nutrition days</p>
+                </div>
+                <div className="bg-gray-50 border border-gray-100 p-4 rounded-3xl text-center">
+                  <span className="text-xs uppercase tracking-[0.18em] text-gray-500 block mb-2">Avg Daily Protein</span>
+                  <p className="text-2xl font-black text-blue-700">{averageDailyProtein}g</p>
+                  <p className="text-xs text-gray-500 mt-2">Based on {nutritionDays.length} nutrition days</p>
+                </div>
+                <div className="bg-gray-50 border border-gray-100 p-4 rounded-3xl text-center">
+                  <span className="text-xs uppercase tracking-[0.18em] text-gray-500 block mb-2">Workout Days</span>
+                  <p className="text-2xl font-black text-green-700">{exerciseDays.length}</p>
+                  <p className="text-xs text-gray-500 mt-2">Unique exercise log days</p>
+                </div>
+                <div className="bg-gray-50 border border-gray-100 p-4 rounded-3xl text-center">
+                  <span className="text-xs uppercase tracking-[0.18em] text-gray-500 block mb-2">Total Sets Logged</span>
+                  <p className="text-2xl font-black text-indigo-700">{exerciseLogs.length}</p>
+                  <p className="text-xs text-gray-500 mt-2">Across all logged workouts</p>
+                </div>
+              </div>
+
+              <div className="mt-6">
+                <h4 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-[0.18em]">Average Exercise Per Body Part</h4>
+                {exerciseStatsByBodyPart.length === 0 ? (
+                  <p className="text-sm text-gray-500">No exercises logged yet.</p>
+                ) : (
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {exerciseStatsByBodyPart.map((stat) => (
+                      <div key={stat.bodyPart} className="bg-gray-50 border border-gray-100 p-4 rounded-3xl">
+                        <p className="text-sm font-semibold text-gray-700">{stat.bodyPart}</p>
+                        <p className="text-2xl font-black text-gray-900 mt-2">{stat.totalSets}</p>
+                        <p className="text-xs text-gray-500 mt-2">{stat.averageSetsPerDay} sets/day avg</p>
+                        <p className="text-xs text-gray-500">{stat.daysTrained} days trained</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </section>
 
           </div>
         )}

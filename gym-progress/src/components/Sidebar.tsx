@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Activity, Dumbbell, Utensils, Target, LogOut, Calendar, User, BarChart2, FileBarChart, Wrench, Sparkles } from "lucide-react";
+import { Activity, Dumbbell, Utensils, Target, LogOut, Calendar, User, BarChart2, FileBarChart, Wrench, Sparkles, ListChecks } from "lucide-react";
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -27,6 +27,7 @@ export default function Sidebar() {
   const routineItems = [
     { name: "Food Chart", href: "/food-chart", icon: Utensils },
     { name: "Daily Routine", href: "/daily-routine", icon: Calendar },
+    { name: "Exercise History", href: "/exercise-history", icon: ListChecks },
   ];
 
   const settingsItems = [
